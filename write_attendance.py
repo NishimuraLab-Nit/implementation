@@ -21,7 +21,7 @@ def get_data_from_firebase(path):
     ref = db.reference(path)
     return ref.get()
 
-def check_and_mark_attendance(attendance, course, sheet, entry_label):
+def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id):
     entry_time_str = attendance.get(entry_label, {}).get('read_datetime')
     
     if not entry_time_str:
@@ -39,7 +39,8 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label):
     start_minutes = start_time.hour * 60 + start_time.minute
 
     if abs(entry_minutes - start_minutes) <= 5:
-        row = course['course_id'] + 1
+        # Calculate the correct cell position
+        row = course_id + 1
         column = entry_time.day + 1
         sheet.update_cell(row, column, "○")
         print(f"出席確認: {course['class_name']} - {entry_label}")
@@ -50,7 +51,7 @@ def record_attendance(students_data, courses_data):
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_number', {})
     item_data = students_data.get('item', {}).get('student_number', {})
-    courses_list = courses_data.get('course_id', [])
+    courses_list = courses_data.get('course_id', {})
 
     for student_id, attendance in attendance_data.items():
         student_info = students_data.get('student_info', {}).get('student_id', {}).get(student_id)
@@ -70,14 +71,15 @@ def record_attendance(students_data, courses_data):
         sheet = client.open_by_key(sheet_id).sheet1
 
         for course_id in course_ids:
-            course = courses_list[course_id]
+            course = courses_list.get(course_id)
             if not course:
                 raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
             
-            marked = check_and_mark_attendance(attendance, course, sheet, 'entry1')
+            if check_and_mark_attendance(attendance, course, sheet, 'entry1', course_id):
+                continue
 
             if 'entry2' in attendance:
-                check_and_mark_attendance(attendance, course, sheet, 'entry2')
+                check_and_mark_attendance(attendance, course, sheet, 'entry2', course_id)
 
 # Firebaseからデータを取得し、出席を記録
 students_data = get_data_from_firebase('Students')
