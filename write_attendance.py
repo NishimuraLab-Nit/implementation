@@ -51,7 +51,7 @@ def record_attendance(students_data, courses_data):
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_number', {})
     item_data = students_data.get('item', {}).get('student_number', {})
-    courses_list = courses_data.get('course_id', {})
+    courses_list = courses_data.get('course_id', [])
 
     for student_id, attendance in attendance_data.items():
         student_info = students_data.get('student_info', {}).get('student_id', {}).get(student_id)
@@ -71,7 +71,10 @@ def record_attendance(students_data, courses_data):
         sheet = client.open_by_key(sheet_id).sheet1
 
         for course_id in course_ids:
-            course = courses_list.get(course_id)
+            if course_id >= len(courses_list):
+                raise ValueError(f"無効なコースID {course_id} が見つかりました。")
+            
+            course = courses_list[course_id]
             if not course:
                 raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
             
