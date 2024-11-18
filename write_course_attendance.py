@@ -58,52 +58,47 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, student_na
 
 # 出席を記録する関数
 def record_attendance(students_data, courses_data):
-    # 各データを取得
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_number', {})
-    sheet_data = courses_data.get('course_id', [])
     student_info_data = students_data.get('student_info', {}).get('student_number', {})
     courses_list = courses_data.get('course_id', [])
-    
-    # 各学生の出席を確認
+
     for student_id, attendance in attendance_data.items():
         student_info = students_data.get('student_info', {}).get('student_id', {}).get(student_id)
         if not student_info:
-            raise ValueError(f"学生 {student_id} の情報が見つかりません。")
+            raise ValueError(f"Student {student_id} information not found.")
 
         student_number = student_info.get('student_number')
         student_name = student_info_data.get(student_number, {}).get('student_name')
+
         if student_number not in enrollment_data:
-            raise ValueError(f"学生番号 {student_number} の登録クラスが見つかりません。")
+            raise ValueError(f"Student number {student_number} enrollment not found.")
 
         course_ids = [cid for cid in enrollment_data[student_number].get('course_id', []) if cid is not None]
 
-        sheet_id = sheet_data.get('course_sheet_id')
-        if not sheet_id:
-            raise ValueError(f"学生番号 {student_number} に対応するスプレッドシートIDが見つかりません。")
-
-        # スプレッドシートを開く
-        sheet = client.open_by_key(sheet_id).sheet1
-        sheet.update_cell(1, 1, "履修者名簿")
-
-        # 学生名をスプレッドシートに追加
-        students_in_sheet = sheet.col_values(1)
-        if student_name not in students_in_sheet:
-            sheet.append_row([student_name])
-
-        # 各コースの出席を確認
         for course_id in course_ids:
             if course_id >= len(courses_list):
-                raise ValueError(f"無効なコースID {course_id} が見つかりました。")
+                raise ValueError(f"Invalid course ID {course_id} found.")
 
             course = courses_list[course_id]
             if not course:
-                raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
+                raise ValueError(f"Course ID {course_id} not found.")
 
-            # entry1とentry2の出席を確認
-            if check_and_mark_attendance(attendance, course, sheet, 'entry1', student_name):
-                continue
+            sheet_id = course.get('course_sheet_id')
+            if not sheet_id:
+                raise ValueError(f"Spreadsheet ID not found for course ID {course_id}.")
 
+            # Open the spreadsheet
+            sheet = client.open_by_key(sheet_id).sheet1
+            sheet.update_cell(1, 1, "Attendance List")
+
+            # Add student name to the sheet if not already present
+            students_in_sheet = sheet.col_values(1)
+            if student_name not in students_in_sheet:
+                sheet.append_row([student_name])
+
+            # Check attendance for entries
+            check_and_mark_attendance(attendance, course, sheet, 'entry1', student_name)
             if 'entry2' in attendance:
                 check_and_mark_attendance(attendance, course, sheet, 'entry2', student_name)
 
