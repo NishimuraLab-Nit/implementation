@@ -91,7 +91,7 @@ def prepare_update_requests(sheet_id, class_names):
                                                  "startColumnIndex": 0, "endColumnIndex": 32}}}}
     ]
 
-    requests.append(create_cell_update_request(0, 0, 0, "教科"))
+    requests.append(create_cell_update_request(0, 0, 0, "履修者"))
     requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(class_names))
 
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
