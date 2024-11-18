@@ -61,7 +61,7 @@ def record_attendance(students_data, courses_data):
     # 各データを取得
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_number', {})
-    item_data = students_data.get('item', {}).get('student_number', {})
+    sheet_data = courses_data.get('course_id', []).get('course_sheet_id', {})
     student_info_data = students_data.get('student_info', {}).get('student_number', {})
     courses_list = courses_data.get('course_id', [])
     
@@ -78,7 +78,7 @@ def record_attendance(students_data, courses_data):
 
         course_ids = [cid for cid in enrollment_data[student_number].get('course_id', []) if cid is not None]
 
-        sheet_id = item_data.get(student_number, {}).get('sheet_id')
+        sheet_id = course_data.get(course_id, []).get('course_sheet_id')
         if not sheet_id:
             raise ValueError(f"学生番号 {student_number} に対応するスプレッドシートIDが見つかりません。")
 
