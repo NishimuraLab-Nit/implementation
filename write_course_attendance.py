@@ -90,7 +90,6 @@ def record_attendance(students_data, courses_data):
 
             # Open the spreadsheet
             sheet = client.open_by_key(sheet_id).sheet1
-            sheet.update_cell(1, 1, "Attendance List")
 
             # Add student name to the sheet if not already present
             students_in_sheet = sheet.col_values(1)
