@@ -131,6 +131,9 @@ def main():
 
     # Iterate over each course and update the corresponding sheet
     for course in courses:
+        if course:
+            print(f"Course Data: {course}")  # Debugging output
+
         if course and 'course_sheet_id' in course and 'course_id' in course:
             sheet_id = course['course_sheet_id']
             course_id = course['course_id']
