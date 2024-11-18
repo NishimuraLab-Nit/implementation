@@ -61,7 +61,7 @@ def record_attendance(students_data, courses_data):
     # 各データを取得
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_number', {})
-    sheet_data = courses_data.get('course_id', []).get('course_sheet_id', {})
+    sheet_data = courses_data.get('course_id', [])
     student_info_data = students_data.get('student_info', {}).get('student_number', {})
     courses_list = courses_data.get('course_id', [])
     
