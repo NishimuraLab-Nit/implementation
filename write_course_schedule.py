@@ -122,31 +122,38 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    sheet_id = get_firebase_data('Courses/course_id/1/course_sheet_id')
-    student_course_ids = get_firebase_data('Students/enrollment/student_number/e19139/course_id')
     courses = get_firebase_data('Courses/course_id')
-
-    if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
+    if not isinstance(courses, list):
         print("Invalid data retrieved from Firebase.")
         return
 
-    courses_dict = {i: course for i, course in enumerate(courses) if course}
+    # Iterate over each course and update the corresponding sheet
+    for course in courses:
+        if course and 'course_sheet_id' in course:
+            sheet_id = course['course_sheet_id']
+            
+            student_course_ids = get_firebase_data('Students/enrollment/student_number/e19139/course_id')
+            if not isinstance(student_course_ids, list):
+                print(f"Invalid student course IDs for sheet {sheet_id}.")
+                continue
 
-    class_names = [
-        courses_dict[cid]['class_name'] for cid in student_course_ids
-        if cid in courses_dict and 'class_name' in courses_dict[cid]
-    ]
+            courses_dict = {i: c for i, c in enumerate(courses) if c}
 
-    requests = prepare_update_requests(sheet_id, class_names)
-    if not requests:
-        print("No requests to update the sheet.")
-        return
+            class_names = [
+                courses_dict[cid]['class_name'] for cid in student_course_ids
+                if cid in courses_dict and 'class_name' in courses_dict[cid]
+            ]
 
-    sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=sheet_id,
-        body={'requests': requests}
-    ).execute()
-    print("Sheet updated successfully.")
+            requests = prepare_update_requests(sheet_id, class_names)
+            if not requests:
+                print(f"No requests to update the sheet {sheet_id}.")
+                continue
+
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={'requests': requests}
+            ).execute()
+            print(f"Sheet {sheet_id} updated successfully.")
 
 if __name__ == "__main__":
     main()
