@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 def initialize_firebase():
     # Firebaseの初期化
-    firebase_cred = credentials.Certificate("path/to/firebase-adminsdk.json")
+    firebase_cred = credentials.Certificate("firebase-adminsdk.json")
     initialize_app(firebase_cred, {
         'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
     })
@@ -13,7 +13,7 @@ def initialize_firebase():
 def get_google_sheets_service():
     # Google Sheets APIのサービスを取得
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
-    google_creds = Credentials.from_service_account_file("path/to/google-credentials.json", scopes=scopes)
+    google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
     return build('sheets', 'v4', credentials=google_creds)
 
 def get_firebase_data(ref_path):
