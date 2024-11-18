@@ -123,7 +123,9 @@ def main():
     sheets_service = get_google_sheets_service()
 
     courses = get_firebase_data('Courses/course_id')
-    if not isinstance(courses, list):
+    student_info = get_firebase_data('Students/student_info/student_number')
+    
+    if not isinstance(courses, list) or not isinstance(student_info, dict):
         print("Invalid data retrieved from Firebase.")
         return
 
@@ -131,20 +133,23 @@ def main():
     for course in courses:
         if course and 'course_sheet_id' in course:
             sheet_id = course['course_sheet_id']
-            
-            student_course_ids = get_firebase_data('Students/enrollment/student_number/e19139/course_id')
-            if not isinstance(student_course_ids, list):
-                print(f"Invalid student course IDs for sheet {sheet_id}.")
+
+            # Retrieve the student numbers for this course
+            enrollment_path = f'Students/enrollment_course_id/{course["course_id"]}/department/e_dept/student_number'
+            enrolled_students = get_firebase_data(enrollment_path)
+
+            if not enrolled_students:
+                print(f"No enrolled students found for course {course['course_id']}.")
                 continue
 
-            courses_dict = {i: c for i, c in enumerate(courses) if c}
-
-            class_names = [
-                courses_dict[cid]['class_name'] for cid in student_course_ids
-                if cid in courses_dict and 'class_name' in courses_dict[cid]
+            # Collect student names based on the retrieved student numbers
+            student_names = [
+                student_info[student_number]['student_name']
+                for student_number in enrolled_students
+                if student_number in student_info and 'student_name' in student_info[student_number]
             ]
 
-            requests = prepare_update_requests(sheet_id, class_names)
+            requests = prepare_update_requests(sheet_id, student_names)
             if not requests:
                 print(f"No requests to update the sheet {sheet_id}.")
                 continue
