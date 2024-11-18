@@ -1,4 +1,4 @@
-name: Write Schedule
+name: Write Course Schedule
 on:
   workflow_dispatch:
   
