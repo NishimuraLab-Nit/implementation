@@ -78,7 +78,7 @@ def record_attendance(students_data, courses_data):
 
         course_ids = [cid for cid in enrollment_data[student_number].get('course_id', []) if cid is not None]
 
-        sheet_id = course_data.get(course_id, []).get('course_sheet_id')
+        sheet_id = sheet_data.get('course_sheet_id')
         if not sheet_id:
             raise ValueError(f"学生番号 {student_number} に対応するスプレッドシートIDが見つかりません。")
 
