@@ -60,16 +60,16 @@ def main():
 
     # Iterate over each course and update the corresponding sheet
     for course in courses:
-        if course and 'course_sheet_id' in course and 'course_id' in course:
+        if course and 'course_sheet_id' in course:
             sheet_id = course['course_sheet_id']
-            course_id = course['course_id']
 
             # Retrieve the student numbers for this course
-            enrollment_path = f'Students/enrollment/course_id/{course_id}/department/e_dept/student_number'
+            course_id = courses.index(course)
+            enrollment_path = f'Students/enrollment/student_number'
             enrolled_students = get_firebase_data(enrollment_path)
 
             if not enrolled_students:
-                print(f"No enrolled students found for course {course_id}.")
+                print(f"No enrolled students found for course at index {course_id}.")
                 continue
 
             # Collect student names based on the retrieved student numbers
@@ -90,7 +90,7 @@ def main():
             ).execute()
             print(f"Sheet {sheet_id} updated successfully.")
         else:
-            print("Course data is incomplete or missing 'course_id'.")
+            print("Course data is incomplete or missing 'course_sheet_id'.")
 
 if __name__ == "__main__":
     main()
