@@ -42,7 +42,7 @@ def prepare_update_requests(sheet_id, class_names):
                         "fields": "userEnteredFormat.horizontalAlignment"}}
     ]
 
-    requests.append(create_cell_update_request(0, 0, 0, "教科"))
+    requests.append(create_cell_update_request(0, 0, 0, "履修者"))
     requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(class_names))
 
     return requests
