@@ -66,7 +66,7 @@ def create_spreadsheets_for_courses():
             batch.execute()
 
             # Firebase にスプレッドシートIDを保存
-            item_ref = db.reference(f'Students/item/course_id/{course_id}')
+            item_ref = db.reference(f'Students/course_id/{course_id}')
             item_ref.update({'course_sheet_id': sheet_id})
 
     except HttpError as error:
