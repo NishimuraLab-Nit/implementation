@@ -1,0 +1,48 @@
+name: Form to Firebase
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: '14'
+
+    - name: Install Firebase Admin SDK
+      run: npm install firebase-admin
+
+    - name: Form to Firebase
+      env:
+        FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+      run: |
+        node <<EOF
+        const admin = require('firebase-admin');
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+
+        admin.initializeApp({
+          credential: admin.credential.cert(serviceAccount),
+          databaseURL: 'https://https://test-51ebc-default-rtdb.firebaseio.com/.firebaseio.com'
+        });
+
+        const db = admin.database();
+        const ref = db.ref('Students/stundent_number');
+
+        // Example data to be uploaded
+        const data = {
+          exampleKey: 'exampleValue'
+        };
+
+        ref.set(data)
+          .then(() => console.log('Data successfully written to Firebase!'))
+          .catch(error => console.error('Error writing data to Firebase:', error));
+        EOF
