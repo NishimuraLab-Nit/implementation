@@ -8,39 +8,45 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
+      # リポジトリをチェックアウト
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v2
-      with:
-        node-version: '14'
+      # Node.jsのセットアップ
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
 
-    - name: Install Firebase Admin SDK
-      run: npm install firebase-admin
+      # Firebase Admin SDKをインストール
+      - name: Install Firebase Admin SDK
+        run: npm install firebase-admin
 
-    - name: Form to Firebase
-      env:
-        FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-      run: |
-        node <<EOF
-        const admin = require('firebase-admin');
-        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      # Firebaseにデータをアップロード
+      - name: Upload data to Firebase
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          node <<EOF
+          const fs = require('fs');
+          const admin = require('firebase-admin');
 
-        admin.initializeApp({
-          credential: admin.credential.cert(serviceAccount),
-          databaseURL: 'https://https://test-51ebc-default-rtdb.firebaseio.com/.firebaseio.com'
-        });
+          // Firebaseサービスアカウントの初期化
+          const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-        const db = admin.database();
-        const ref = db.ref('Students/stundent_number');
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            databaseURL: 'https://test-51ebc-default-rtdb.firebaseio.com/'
+          });
 
-        // Example data to be uploaded
-        const data = {
-          exampleKey: 'exampleValue'
-        };
+          const db = admin.database();
+          const ref = db.ref('Students');
 
-        ref.set(data)
-          .then(() => console.log('Data successfully written to Firebase!'))
-          .catch(error => console.error('Error writing data to Firebase:', error));
-        EOF
+          // JSONファイル (data.json) の読み込み
+          const formData = JSON.parse(fs.readFileSync('./data.json', 'utf8'));
+
+          // Firebaseにデータを保存
+          ref.push(formData)
+            .then(() => console.log('Data successfully uploaded to Firebase!'))
+            .catch(error => console.error('Error uploading data to Firebase:', error));
+          EOF
