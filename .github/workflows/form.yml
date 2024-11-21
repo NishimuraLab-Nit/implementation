@@ -1,4 +1,4 @@
-name: Upload Student Data to Firebase
+name: Firebase に学生データをアップロード
 
 on:
   workflow_dispatch:
@@ -8,68 +8,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the repository
-      - name: Checkout repository
+      # リポジトリをチェックアウト
+      - name: リポジトリのチェックアウト
         uses: actions/checkout@v3
 
-      # Step 2: Setup Node.js
-      - name: Setup Node.js
+      # Node.js のセットアップ
+      - name: Node.js のセットアップ
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      # Step 3: Install Firebase Admin SDK
-      - name: Install Firebase Admin SDK
+      # Firebase Admin SDK のインストール
+      - name: Firebase Admin SDK のインストール
         run: npm install firebase-admin
 
-      # Step 4: Upload data to Firebase
-      - name: Upload data to Firebase
+      # スクリプトを実行
+      - name: Firebase にデータをアップロード
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: |
-          node <<EOF
-          const fs = require('fs');
-          const admin = require('firebase-admin');
-
-          // Initialize Firebase Admin SDK
-          const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-
-          admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount),
-            databaseURL: 'https://test-51ebc-default-rtdb.firebaseio.com/'
-          });
-
-          const db = admin.database();
-
-          // Check if data.json exists
-          const dataFilePath = './data.json';
-          if (!fs.existsSync(dataFilePath)) {
-            throw new Error(`JSON file not found at path: ${dataFilePath}`);
-          }
-
-          // Read and parse data.json
-          const formData = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
-
-          // Validate required fields
-          const requiredFields = ['studentId', 'name', 'attendanceNumber', 'department', 'year', 'courseId'];
-          for (const field of requiredFields) {
-            if (!formData[field]) {
-              throw new Error(`Missing required field: ${field}`);
-            }
-          }
-
-          // Construct Firebase reference path
-          const studentNumber = formData.studentId;
-          const refPath = `Students/student_number/${studentNumber}`;
-
-          console.log(`Saving data to Firebase at path: ${refPath}`);
-
-          // Save data to Firebase
-          const ref = db.ref(refPath);
-          ref.set(formData)
-            .then(() => console.log(`Data successfully uploaded to Firebase at path: ${refPath}`))
-            .catch(error => {
-              console.error('Error uploading data to Firebase:', error);
-              process.exit(1);
-            });
-          EOF
+        run: node upload.js
