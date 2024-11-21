@@ -45,8 +45,13 @@ jobs:
           // JSONファイル (data.json) の読み込み
           const formData = JSON.parse(fs.readFileSync('./data.json', 'utf8'));
 
+          // ディレクトリ構造を動的に構築
+          const studentNumber = formData.studentId; // 学籍番号
+          const refPath = `Students/student_number/${studentNumber}`;
+          const ref = db.ref(refPath);
+
           // Firebaseにデータを保存
-          ref.push(formData)
-            .then(() => console.log('Data successfully uploaded to Firebase!'))
+          ref.set(formData)
+            .then(() => console.log(`Data successfully uploaded to Firebase at path: ${refPath}`))
             .catch(error => console.error('Error uploading data to Firebase:', error));
           EOF
