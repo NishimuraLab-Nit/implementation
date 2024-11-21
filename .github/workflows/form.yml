@@ -1,4 +1,4 @@
-name: Form to Firebase
+name: Upload Student Data to Firebase
 
 on:
   workflow_dispatch:
@@ -40,18 +40,36 @@ jobs:
           });
 
           const db = admin.database();
-          const ref = db.ref('Students');
 
           // JSONファイル (data.json) の読み込み
-          const formData = JSON.parse(fs.readFileSync('./data.json', 'utf8'));
+          const dataFilePath = './data.json';
+          if (!fs.existsSync(dataFilePath)) {
+            throw new Error(`JSON file not found at path: ${dataFilePath}`);
+          }
 
-          // ディレクトリ構造を動的に構築
+          const formData = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
+
+          // 必須フィールドの確認
+          const requiredFields = ['studentId', 'name', 'attendanceNumber', 'department', 'year', 'courseId'];
+          for (const field of requiredFields) {
+            if (!formData[field]) {
+              throw new Error(`Missing required field: ${field}`);
+            }
+          }
+
+          // Firebase用のディレクトリパスを構築
           const studentNumber = formData.studentId; // 学籍番号
           const refPath = `Students/student_number/${studentNumber}`;
+
+          console.log(`Saving data to Firebase at path: ${refPath}`);
+
           const ref = db.ref(refPath);
 
           // Firebaseにデータを保存
           ref.set(formData)
             .then(() => console.log(`Data successfully uploaded to Firebase at path: ${refPath}`))
-            .catch(error => console.error('Error uploading data to Firebase:', error));
+            .catch(error => {
+              console.error('Error uploading data to Firebase:', error);
+              process.exit(1);
+            });
           EOF
