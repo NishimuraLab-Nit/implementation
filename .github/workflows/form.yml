@@ -8,21 +8,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # リポジトリをチェックアウト
+      # Step 1: Checkout the repository
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      # Node.jsのセットアップ
+      # Step 2: Setup Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
 
-      # Firebase Admin SDKをインストール
+      # Step 3: Install Firebase Admin SDK
       - name: Install Firebase Admin SDK
         run: npm install firebase-admin
 
-      # Firebaseにデータをアップロード
+      # Step 4: Upload data to Firebase
       - name: Upload data to Firebase
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
@@ -31,7 +31,7 @@ jobs:
           const fs = require('fs');
           const admin = require('firebase-admin');
 
-          // Firebaseサービスアカウントの初期化
+          // Initialize Firebase Admin SDK
           const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
           admin.initializeApp({
@@ -41,15 +41,16 @@ jobs:
 
           const db = admin.database();
 
-          // JSONファイル (data.json) の読み込み
+          // Check if data.json exists
           const dataFilePath = './data.json';
           if (!fs.existsSync(dataFilePath)) {
             throw new Error(`JSON file not found at path: ${dataFilePath}`);
           }
 
+          // Read and parse data.json
           const formData = JSON.parse(fs.readFileSync(dataFilePath, 'utf8'));
 
-          // 必須フィールドの確認
+          // Validate required fields
           const requiredFields = ['studentId', 'name', 'attendanceNumber', 'department', 'year', 'courseId'];
           for (const field of requiredFields) {
             if (!formData[field]) {
@@ -57,15 +58,14 @@ jobs:
             }
           }
 
-          // Firebase用のディレクトリパスを構築
-          const studentNumber = formData.studentId; // 学籍番号
+          // Construct Firebase reference path
+          const studentNumber = formData.studentId;
           const refPath = `Students/student_number/${studentNumber}`;
 
           console.log(`Saving data to Firebase at path: ${refPath}`);
 
+          // Save data to Firebase
           const ref = db.ref(refPath);
-
-          // Firebaseにデータを保存
           ref.set(formData)
             .then(() => console.log(`Data successfully uploaded to Firebase at path: ${refPath}`))
             .catch(error => {
