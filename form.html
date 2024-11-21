@@ -28,8 +28,8 @@
 <body>
     <h1>学生データフォーム</h1>
     
-    <label for="student_id">学籍番号：</label>
-    <input type="text" id="student_id" placeholder="学籍番号を入力">
+    <label for="student_number">学籍番号：</label>
+    <input type="text" id="student_number" placeholder="学籍番号を入力">
 
     <label for="student_name">名前：</label>
     <input type="text" id="student_name" placeholder="名前を入力">
@@ -127,8 +127,8 @@
 
         // JSONファイルを生成してダウンロードする
         document.getElementById('submit').addEventListener('click', function() {
-            const studentId = document.getElementById('student_id').value;
-            const name = document.getElementById('student_name').value;
+            const studentNumber = document.getElementById('student_number').value;
+            const StudentName = document.getElementById('student_name').value;
             const attendanceNumber = document.getElementById('attendance_number').value;
             const department = document.getElementById('department').value;
             const year = document.getElementById('year').value;
@@ -141,8 +141,8 @@
 
             // JSONデータを生成
             const data = {
-                studentId: studentId,
-                name: name,
+                studentNumber: studentNumber,
+                StudentName: student_name,
                 attendanceNumber: attendanceNumber,
                 department: department,
                 year: year,
