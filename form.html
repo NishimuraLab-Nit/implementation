@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>学生データフォーム</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        select, input {
+            margin: 10px 0;
+            padding: 5px;
+            width: 200px;
+            display: block;
+        }
+        label {
+            margin-top: 10px;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>学生データフォーム</h1>
+    
+    <label for="student-id">学籍番号：</label>
+    <input type="text" id="student-id" placeholder="学籍番号を入力">
+
+    <label for="name">名前：</label>
+    <input type="text" id="name" placeholder="名前を入力">
+
+    <label for="attendance-number">出席番号：</label>
+    <input type="text" id="attendance-number" placeholder="出席番号を入力">
+
+    <label for="department">学科を選択：</label>
+    <select id="department">
+        <option value="">選択してください</option>
+        <option value="E">E</option>
+        <option value="M">M</option>
+        <option value="S">S</option>
+        <option value="C">C</option>
+        <option value="D">D</option>
+    </select>
+
+    <label for="year">学年を選択：</label>
+    <select id="year">
+        <option value="">選択してください</option>
+        <option value="1">1年生</option>
+        <option value="2">2年生</option>
+        <option value="3">3年生</option>
+        <option value="4">4年生</option>
+        <option value="5">5年生</option>
+    </select>
+
+    <label for="courses">履修科目を選択：</label>
+    <select id="courses">
+        <option value="">選択してください</option>
+    </select>
+
+    <button id="submit">送信</button>
+
+    <script>
+        const courses = {
+            E: {
+                1: ['線形代数', '力学'],
+                2: ['電磁気学', '物理学'],
+                3: ['熱力学', '材料工学'],
+                4: ['制御工学', 'ロボット工学'],
+                5: ['プロジェクト管理', '研究開発']
+            },
+            M: {
+                1: ['微分積分', '統計学'],
+                2: ['機械設計', '材料力学'],
+                3: ['流体力学', '熱工学'],
+                4: ['機械加工', 'システム設計'],
+                5: ['プロジェクト管理', '研究開発']
+            },
+            S: {
+                1: ['化学基礎', '生物基礎'],
+                2: ['有機化学', '無機化学'],
+                3: ['生化学', '物理化学'],
+                4: ['分析化学', '環境化学'],
+                5: ['プロジェクト管理', '研究開発']
+            },
+            C: {
+                1: ['プログラミング基礎', 'データ構造'],
+                2: ['アルゴリズム', 'コンピュータアーキテクチャ'],
+                3: ['データベース', 'ネットワーク'],
+                4: ['オペレーティングシステム', 'セキュリティ'],
+                5: ['プロジェクト管理', '研究開発']
+            },
+            D: {
+                1: ['デザイン基礎', '色彩学'],
+                2: ['インタラクションデザイン', 'タイポグラフィ'],
+                3: ['UX/UIデザイン', '3Dモデリング'],
+                4: ['ビジュアルデザイン', 'アニメーション'],
+                5: ['プロジェクト管理', '研究開発']
+            }
+        };
+
+        function updateCourses() {
+            const department = document.getElementById('department').value;
+            const year = document.getElementById('year').value;
+            const coursesSelect = document.getElementById('courses');
+            coursesSelect.innerHTML = '<option value="">選択してください</option>'; // 初期化
+
+            if (department && year) {
+                courses[department][year].forEach(course => {
+                    const option = document.createElement('option');
+                    option.value = course;
+                    option.textContent = course;
+                    coursesSelect.appendChild(option);
+                });
+            }
+        }
+
+        document.getElementById('department').addEventListener('change', updateCourses);
+        document.getElementById('year').addEventListener('change', updateCourses);
+
+        document.getElementById('submit').addEventListener('click', function() {
+            const studentId = document.getElementById('student-id').value;
+            const name = document.getElementById('name').value;
+            const attendanceNumber = document.getElementById('attendance-number').value;
+            const department = document.getElementById('department').value;
+            const year = document.getElementById('year').value;
+            const course = document.getElementById('courses').value;
+
+            if (!studentId || !name || !attendanceNumber || !department || !year || !course) {
+                alert('すべてのフィールドを入力してください。');
+                return;
+            }
+
+            alert('データが正常に入力されました');
+        });
+    </script>
+</body>
+</html>
