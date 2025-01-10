@@ -89,7 +89,7 @@ def record_attendance(students_data, courses_data):
                 continue
 
             # スプレッドシートを開く
-            sheet_id = student_info.get('sheet_id')
+            sheet_id = student_index.get('sheet_id')
             if not sheet_id:
                 print(f"学生 {student_id} に対応するスプレッドシートIDが見つかりません。")
                 continue
