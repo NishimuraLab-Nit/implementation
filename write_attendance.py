@@ -59,12 +59,11 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
 def record_attendance(students_data, courses_data):
     # 各データを取得
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
-    enrollment_data = students_data.get('enrollment', {}).get('student_number', {})
-    item_data = students_data.get('item', {}).get('student_number', {})
+    enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     courses_list = courses_data.get('course_id', [])
 
     # 各学生の出席を確認
-    for student_id, attendance in attendance_data.items():
+    for student_number, attendance in attendance_data.items():
         student_info = students_data.get('student_info', {}).get('student_id', {}).get(student_id)
         if not student_info:
             raise ValueError(f"学生 {student_id} の情報が見つかりません。")
