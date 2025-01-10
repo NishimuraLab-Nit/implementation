@@ -60,6 +60,7 @@ def record_attendance(students_data, courses_data):
     # 各データを取得
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
+    student_index_data = students_data.get('student_info', {}).get('student_index', {})
     courses_list = courses_data.get('course_id', [])
 
     # 各学生の出席を確認
@@ -74,6 +75,15 @@ def record_attendance(students_data, courses_data):
         enrollment_info = enrollment_data.get(student_index, {})
         course_ids = enrollment_info.get('course_id', '').split(',')
 
+        # student_indexからsheet_idを取得
+        sheet_id = student_index_data.get(student_index, {}).get('sheet_id')
+        if not sheet_id:
+            print(f"学生インデックス {student_index} に対応するスプレッドシートIDが見つかりません。")
+            continue
+
+        # スプレッドシートを開く
+        sheet = client.open_by_key(sheet_id).sheet1
+
         # 各コースの出席を確認
         for course_id in course_ids:
             # コースIDがリスト形式に対応
@@ -87,14 +97,6 @@ def record_attendance(students_data, courses_data):
             if not course:
                 print(f"コースID {course_id} に対応する授業が見つかりません。")
                 continue
-
-            # スプレッドシートを開く
-            sheet_id = student_index.get('sheet_id')
-            if not sheet_id:
-                print(f"学生 {student_id} に対応するスプレッドシートIDが見つかりません。")
-                continue
-
-            sheet = client.open_by_key(sheet_id).sheet1
 
             # entry1とentry2の出席を確認
             if check_and_mark_attendance(attendance, course, sheet, 'entry1', course_id):
