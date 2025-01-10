@@ -4,24 +4,28 @@ from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 
 def initialize_firebase():
-    # Firebaseの初期化
+    """Firebaseの初期化"""
     firebase_cred = credentials.Certificate("firebase-adminsdk.json")
     initialize_app(firebase_cred, {
         'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
     })
 
 def get_google_sheets_service():
-    # Google Sheets APIのサービスを取得
+    """Google Sheets APIのサービスを取得"""
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
     return build('sheets', 'v4', credentials=google_creds)
 
 def get_firebase_data(ref_path):
-    # Firebaseからデータを取得
-    return db.reference(ref_path).get()
+    """Firebaseからデータを取得"""
+    try:
+        return db.reference(ref_path).get()
+    except Exception as e:
+        print(f"Error retrieving data from Firebase: {e}")
+        return None
 
 def create_cell_update_request(sheet_id, row_index, column_index, value):
-    # セルの更新リクエストを作成
+    """セルの更新リクエストを作成"""
     return {
         "updateCells": {
             "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
@@ -31,7 +35,7 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
     }
 
 def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
-    # シートの次元プロパティの更新リクエストを作成
+    """シートの次元プロパティの更新リクエストを作成"""
     return {
         "updateDimensionProperties": {
             "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
@@ -41,7 +45,7 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
     }
 
 def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
-    # 条件付き書式のリクエストを作成
+    """条件付き書式のリクエストを作成"""
     return {
         "addConditionalFormatRule": {
             "rule": {
@@ -57,7 +61,7 @@ def create_conditional_formatting_request(sheet_id, start_row, end_row, start_co
     }
 
 def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
-    # 黒背景のセルフォーマットリクエストを作成
+    """黒背景のセルフォーマットリクエストを作成"""
     black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
     return {
         "repeatCell": {
@@ -69,12 +73,12 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
     }
 
 def prepare_update_requests(sheet_id, class_names):
+    """Google Sheets更新用リクエストを準備"""
     if not class_names:
         print("Class names list is empty. Check data retrieved from Firebase.")
         return []
 
     requests = [
-        # 初期設定リクエストの作成
         {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
         create_dimension_request(0, "COLUMNS", 0, 1, 100),
         create_dimension_request(0, "COLUMNS", 1, 32, 35),
@@ -98,12 +102,12 @@ def prepare_update_requests(sheet_id, class_names):
 
     # 日付と曜日の追加
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(2024, 11, 1)
+    start_date = datetime(2025, 12, 1)
     end_row = 25
 
     for i in range(31):
         date = start_date + timedelta(days=i)
-        if date.month != 11:
+        if date.month != 12:
             break
         weekday = date.weekday()
         date_string = f"{date.strftime('%m')}\n月\n{date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
@@ -128,29 +132,27 @@ def main():
     sheets_service = get_google_sheets_service()
 
     # Firebaseから必要なデータを取得
-    sheet_id = get_firebase_data('Students/item/student_number/e19139/sheet_id')
-    student_course_ids = get_firebase_data('Students/enrollment/student_number/e19139/course_id')
+    sheet_id = get_firebase_data('Students/student_info/student_index/E534/sheet_id')
+    student_course_ids = get_firebase_data('Students/enrollment/student_index/E534/course_id')
     courses = get_firebase_data('Courses/course_id')
 
     print("Sheet ID:", sheet_id)
     print("Student Course IDs:", student_course_ids)
     print("Courses:", courses)
 
-    # データの検証
     if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
         print("Invalid data retrieved from Firebase.")
         return
 
     # コース情報を辞書に変換
-    courses_dict = {i: course for i, course in enumerate(courses) if course}
+    courses_dict = {str(i): course for i, course in enumerate(courses) if course}
 
     # クラス名を収集
     class_names = [
-        courses_dict[cid]['class_name'] for cid in student_course_ids
-        if cid in courses_dict and 'class_name' in courses_dict[cid]
+        courses_dict[str(cid)]['class_name'] for cid in student_course_ids
+        if str(cid) in courses_dict and 'class_name' in courses_dict[str(cid)]
     ]
 
-    # シート更新リクエストの準備
     requests = prepare_update_requests(sheet_id, class_names)
     if not requests:
         print("No requests to update the sheet.")
