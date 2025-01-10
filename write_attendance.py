@@ -24,7 +24,6 @@ def get_data_from_firebase(path):
     ref = db.reference(path)
     return ref.get()
 
-# 出席を確認しマークする関数
 def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id):
     # 入室時間を取得
     entry_time_str = attendance.get(entry_label, {}).get('read_datetime')
@@ -32,7 +31,12 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
         return False
 
     # 入室時間を日付オブジェクトに変換
-    entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+    try:
+        entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        print(f"Invalid entry time format: {entry_time_str}")
+        return False
+
     entry_day = entry_time.strftime("%A")
     entry_minutes = entry_time.hour * 60 + entry_time.minute
 
@@ -42,7 +46,22 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
 
     # コースの開始時間を取得
     start_time_str = course.get('schedule', {}).get('time', '').split('-')[0]
-    start_time = datetime.datetime.strptime(start_time_str, "%H:%M")
+
+    # 不要な文字を除去
+    start_time_str = start_time_str.strip().lstrip('~')
+
+    # データ形式を検証
+    if not start_time_str or not re.match(r"^\d{1,2}:\d{2}$", start_time_str):
+        print(f"Invalid time format: {start_time_str}")
+        return False
+
+    # 開始時間を解析
+    try:
+        start_time = datetime.datetime.strptime(start_time_str, "%H:%M")
+    except ValueError:
+        print(f"Invalid start time format: {start_time_str}")
+        return False
+
     start_minutes = start_time.hour * 60 + start_time.minute
 
     # 入室時間が許容範囲内か確認
