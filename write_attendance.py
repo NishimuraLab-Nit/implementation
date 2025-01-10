@@ -60,7 +60,7 @@ def record_attendance(students_data, courses_data):
     # 各データを取得
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
-    courses_dict = courses_data.get('course_id', {})
+    courses_list = courses_data.get('course_id', [])
 
     # 各学生の出席を確認
     for student_id, attendance in attendance_data.items():
@@ -76,7 +76,14 @@ def record_attendance(students_data, courses_data):
 
         # 各コースの出席を確認
         for course_id in course_ids:
-            course = courses_dict.get(course_id)
+            # コースIDがリスト形式に対応
+            try:
+                course_id_int = int(course_id)  # course_idは文字列として取得される可能性があるため整数に変換
+                course = courses_list[course_id_int]  # リストからインデックスで取得
+            except (ValueError, IndexError):
+                print(f"無効なコースID {course_id} が見つかりました。")
+                continue
+
             if not course:
                 print(f"コースID {course_id} に対応する授業が見つかりません。")
                 continue
