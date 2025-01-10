@@ -37,18 +37,18 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
     entry_minutes = entry_time.hour * 60 + entry_time.minute
 
     # コースの日と一致するか確認
-    if course['schedule']['day'] != entry_day:
+    if course.get('schedule', {}).get('day') != entry_day:
         return False
 
     # コースの開始時間を取得
-    start_time_str = course['schedule']['time'].split('-')[0]
+    start_time_str = course.get('schedule', {}).get('time', '').split('-')[0]
     start_time = datetime.datetime.strptime(start_time_str, "%H:%M")
     start_minutes = start_time.hour * 60 + start_time.minute
 
     # 入室時間が許容範囲内か確認
     if abs(entry_minutes - start_minutes) <= 5:
         # 正しいセル位置を計算して更新
-        row = course_id + 1
+        row = int(course_id) + 1
         column = entry_time.day + 1
         sheet.update_cell(row, column, "○")
         print(f"出席確認: {course['class_name']} - {entry_label}")
@@ -60,35 +60,34 @@ def record_attendance(students_data, courses_data):
     # 各データを取得
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
-    courses_list = courses_data.get('course_id', [])
+    courses_dict = courses_data.get('course_id', {})
 
     # 各学生の出席を確認
-    for student_number, attendance in attendance_data.items():
+    for student_id, attendance in attendance_data.items():
+        # 学生情報を取得
         student_info = students_data.get('student_info', {}).get('student_id', {}).get(student_id)
         if not student_info:
-            raise ValueError(f"学生 {student_id} の情報が見つかりません。")
+            print(f"学生 {student_id} の情報が見つかりません。")
+            continue
 
-        student_number = student_info.get('student_number')
-        if student_number not in enrollment_data:
-            raise ValueError(f"学生番号 {student_number} の登録クラスが見つかりません。")
-
-        course_ids = [cid for cid in enrollment_data[student_number].get('course_id', []) if cid is not None]
-
-        sheet_id = item_data.get(student_number, {}).get('sheet_id')
-        if not sheet_id:
-            raise ValueError(f"学生番号 {student_number} に対応するスプレッドシートIDが見つかりません。")
-
-        # スプレッドシートを開く
-        sheet = client.open_by_key(sheet_id).sheet1
+        student_index = student_info.get('student_index')
+        enrollment_info = enrollment_data.get(student_index, {})
+        course_ids = enrollment_info.get('course_id', '').split(',')
 
         # 各コースの出席を確認
         for course_id in course_ids:
-            if course_id >= len(courses_list):
-                raise ValueError(f"無効なコースID {course_id} が見つかりました。")
-
-            course = courses_list[course_id]
+            course = courses_dict.get(course_id)
             if not course:
-                raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
+                print(f"コースID {course_id} に対応する授業が見つかりません。")
+                continue
+
+            # スプレッドシートを開く
+            sheet_id = student_info.get('sheet_id')
+            if not sheet_id:
+                print(f"学生 {student_id} に対応するスプレッドシートIDが見つかりません。")
+                continue
+
+            sheet = client.open_by_key(sheet_id).sheet1
 
             # entry1とentry2の出席を確認
             if check_and_mark_attendance(attendance, course, sheet, 'entry1', course_id):
