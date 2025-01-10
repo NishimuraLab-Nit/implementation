@@ -3,6 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import re
 
 # Firebaseアプリの初期化（未初期化の場合のみ実行）
 if not firebase_admin._apps:
