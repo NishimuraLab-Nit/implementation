@@ -133,8 +133,8 @@ def main():
         student_course_ids = get_firebase_data('Students/enrollment/student_index/E534/course_id')
         courses = get_firebase_data('Courses/course_id')
 
-        # データの検証
-        validate_firebase_data(sheet_id, student_course_ids, courses)
+        # データの検証と整形
+        student_course_ids, courses = validate_firebase_data(sheet_id, student_course_ids, courses)
 
         # コース情報を辞書化
         courses_dict = {str(i): course for i, course in enumerate(courses) if course}
@@ -166,7 +166,6 @@ def main():
 
     except Exception as e:
         print(f"予期しないエラーが発生しました: {e}")
-
 
 if __name__ == "__main__":
     main()
