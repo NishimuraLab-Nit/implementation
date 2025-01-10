@@ -24,53 +24,35 @@ def get_firebase_data(ref_path):
         print(f"Error retrieving data from Firebase: {e}")
         return None
 
-def create_cell_update_request(sheet_id, row_index, column_index, value):
-    """セルの更新リクエストを作成"""
-    return {
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
-            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
-            "fields": "userEnteredValue"
-        }
-    }
+def prepare_class_names(student_course_ids, courses):
+    """クラス名を準備"""
+    # Student Course IDsをリスト形式に変換
+    if not isinstance(student_course_ids, list):
+        student_course_ids = [student_course_ids]
 
-def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
-    """シートの次元プロパティの更新リクエストを作成"""
-    return {
-        "updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
-            "properties": {"pixelSize": pixel_size},
-            "fields": "pixelSize"
-        }
-    }
+    # Coursesデータの検証
+    if not isinstance(courses, list) or len(courses) == 0:
+        print("Courses data is invalid or empty.")
+        return []
 
-def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
-    """条件付き書式のリクエストを作成"""
-    return {
-        "addConditionalFormatRule": {
-            "rule": {
-                "ranges": [{"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
-                            "startColumnIndex": start_col, "endColumnIndex": end_col}],
-                "booleanRule": {
-                    "condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": formula}]},
-                    "format": {"backgroundColor": color}
-                }
-            },
-            "index": 0
-        }
-    }
+    # クラス名を抽出
+    class_names = []
+    for course_id in student_course_ids:
+        # コースIDが無効の場合をスキップ
+        if course_id is None or not str(course_id).isdigit():
+            continue
 
-def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
-    """黒背景のセルフォーマットリクエストを作成"""
-    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
-    return {
-        "repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
-                      "startColumnIndex": start_col, "endColumnIndex": end_col},
-            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
-            "fields": "userEnteredFormat.backgroundColor"
-        }
-    }
+        course_id = int(course_id)  # 数値として扱う
+        if course_id < len(courses) and courses[course_id] is not None:
+            course_data = courses[course_id]
+            if 'class_name' in course_data:
+                class_names.append(course_data['class_name'])
+            else:
+                print(f"Class name not found for course ID: {course_id}")
+        else:
+            print(f"Invalid course ID or course data: {course_id}")
+
+    return class_names
 
 def prepare_update_requests(sheet_id, class_names):
     """Google Sheets更新用リクエストを準備"""
@@ -80,54 +62,46 @@ def prepare_update_requests(sheet_id, class_names):
 
     requests = [
         {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
-        create_dimension_request(0, "COLUMNS", 0, 1, 100),
-        create_dimension_request(0, "COLUMNS", 1, 32, 35),
-        create_dimension_request(0, "ROWS", 0, 1, 120),
-        {"repeatCell": {"range": {"sheetId": 0},
-                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-                        "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
-                                     "endColumnIndex": 32},
-                           "top": {"style": "SOLID", "width": 1},
-                           "bottom": {"style": "SOLID", "width": 1},
-                           "left": {"style": "SOLID", "width": 1},
-                           "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
-                                                 "startColumnIndex": 0, "endColumnIndex": 32}}}}
+        {"updateDimensionProperties": {
+            "range": {"sheetId": 0, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+            "properties": {"pixelSize": 100},
+            "fields": "pixelSize"
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": 0, "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+            "properties": {"pixelSize": 120},
+            "fields": "pixelSize"
+        }},
+        {"repeatCell": {
+            "range": {"sheetId": 0},
+            "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+            "fields": "userEnteredFormat.horizontalAlignment"
+        }},
     ]
 
-    # 教科名の追加
-    requests.append(create_cell_update_request(0, 0, 0, "教科"))
-    requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(class_names))
+    # 教科名を追加
+    requests.append({
+        "updateCells": {
+            "start": {"sheetId": 0, "rowIndex": 0, "columnIndex": 0},
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": "教科"}}]}],
+            "fields": "userEnteredValue"
+        }
+    })
 
-    # 日付と曜日の追加
-    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(2025, 12, 1)
-    end_row = 25
-
-    for i in range(31):
-        date = start_date + timedelta(days=i)
-        if date.month != 12:
-            break
-        weekday = date.weekday()
-        date_string = f"{date.strftime('%m')}\n月\n{date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
-        requests.append(create_cell_update_request(0, 0, i + 1, date_string))
-
-        # 週末の条件付き書式
-        if weekday in (5, 6):
-            color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
-            requests.append(create_conditional_formatting_request(
-                0, 0, end_row, i + 1, i + 2, color,
-                f'=ISNUMBER(SEARCH("{japanese_weekdays[weekday]}", INDIRECT(ADDRESS(1, COLUMN()))))'
-            ))
-
-    # 黒背景の設定
-    requests.append(create_black_background_request(0, 25, 1000, 0, 1000))
-    requests.append(create_black_background_request(0, 0, 1000, 32, 1000))
+    # クラス名を追加
+    for i, class_name in enumerate(class_names):
+        requests.append({
+            "updateCells": {
+                "start": {"sheetId": 0, "rowIndex": i + 1, "columnIndex": 0},
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": class_name}}]}],
+                "fields": "userEnteredValue"
+            }
+        })
 
     return requests
 
 def main():
+    """メイン関数"""
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
@@ -136,34 +110,38 @@ def main():
     student_course_ids = get_firebase_data('Students/enrollment/student_index/E534/course_id')
     courses = get_firebase_data('Courses/course_id')
 
-    print("Sheet ID:", sheet_id)
-    print("Student Course IDs:", student_course_ids)
-    print("Courses:", courses)
-
-    if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
-        print("Invalid data retrieved from Firebase.")
+    # データの検証
+    if not sheet_id:
+        print("Sheet ID is missing or invalid.")
+        return
+    if student_course_ids is None:
+        print("Student Course IDs data is missing or invalid.")
+        return
+    if courses is None:
+        print("Courses data is missing or invalid.")
         return
 
-    # コース情報を辞書に変換
-    courses_dict = {str(i): course for i, course in enumerate(courses) if course}
+    # クラス名の準備
+    class_names = prepare_class_names(student_course_ids, courses)
+    if not class_names:
+        print("No valid class names found.")
+        return
 
-    # クラス名を収集
-    class_names = [
-        courses_dict[str(cid)]['class_name'] for cid in student_course_ids
-        if str(cid) in courses_dict and 'class_name' in courses_dict[str(cid)]
-    ]
-
+    # リクエストを準備
     requests = prepare_update_requests(sheet_id, class_names)
     if not requests:
         print("No requests to update the sheet.")
         return
 
     # シートの更新を実行
-    sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=sheet_id,
-        body={'requests': requests}
-    ).execute()
-    print("Sheet updated successfully.")
+    try:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=sheet_id,
+            body={"requests": requests}
+        ).execute()
+        print("Sheet updated successfully.")
+    except Exception as e:
+        print(f"Error updating the sheet: {e}")
 
 if __name__ == "__main__":
     main()
