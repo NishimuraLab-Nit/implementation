@@ -69,28 +69,13 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
     }
 
 
-def prepare_update_requests(sheet_id, class_names):
-    if not class_names:
-        print("Class names list is empty. Check data retrieved from Firebase.")
-        return []
+def prepare_update_requests(sheet_ids, class_names):
+    """
+    Prepare requests to format and update each monthly sheet with headers and class names.
+    """
+    weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    requests = []
 
-    requests = [
-        {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
-        create_dimension_request(0, "COLUMNS", 0, 1, 100),
-        create_dimension_request(0, "COLUMNS", 1, 32, 35),
-        create_dimension_request(0, "ROWS", 0, 1, 120),
-        {"repeatCell": {"range": {"sheetId": 0},
-                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-                        "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
-                                     "endColumnIndex": 32},
-                           "top": {"style": "SOLID", "width": 1},
-                           "bottom": {"style": "SOLID", "width": 1},
-                           "left": {"style": "SOLID", "width": 1},
-                           "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
-                                                 "startColumnIndex": 0, "endColumnIndex": 32}}}}
-    ]
     for month, sheet_title in enumerate(sheet_ids.keys(), start=1):
         sheet_id = sheet_ids[sheet_title]
 
@@ -132,7 +117,6 @@ def prepare_update_requests(sheet_id, class_names):
                 break  # Skip invalid dates beyond the month's end
 
     return requests
-
 def main():
     """
     Main function to initialize services, retrieve data, and update Google Sheets.
