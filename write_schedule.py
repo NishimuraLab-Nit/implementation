@@ -156,13 +156,16 @@ def main():
         print("Invalid data retrieved from Firebase.")
         return
 
-    courses_dict = {i: course for i, course in enumerate(courses) if course}
-    class_names = [
-        courses_dict[cid]['class_name'] for cid in student_course_ids
-        if cid in courses_dict and 'class_name' in courses_dict[cid]
+    # student_course_idsが文字列のリストであるため、intに変換してインデックスに対応させる
+    courses_dict = {str(i): course for i, course in enumerate(courses) if course}
+    course_names = [
+        courses_dict[cid]['course_name'] for cid in student_course_ids
+        if cid in courses_dict and 'course_name' in courses_dict[cid]
     ]
 
-    requests = prepare_update_requests(sheet_id, class_names)
+    print("Course Names:", course_names)
+
+    requests = prepare_update_requests(sheet_id, course_names)
     if not requests:
         print("No requests to update the sheet.")
         return
@@ -172,6 +175,7 @@ def main():
         body={'requests': requests}
     ).execute()
     print("Sheet updated successfully.")
+
 
 
 if __name__ == "__main__":
