@@ -139,7 +139,7 @@ def main():
         # クラス名を抽出
         courses_dict = {i: course for i, course in enumerate(courses) if course}
         class_names = [
-            courses_dict[cid]['class_name'] for cid in student_course_ids
+            courses_dict[cid]['course_name'] for cid in student_course_ids
             if cid in courses_dict and 'class_name' in courses_dict[cid]
         ]
 
