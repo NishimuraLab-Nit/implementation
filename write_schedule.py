@@ -56,43 +56,41 @@ def validate_firebase_data(sheet_id, student_course_ids, courses):
 
     return student_course_ids, valid_courses
 
-def get_sheet_id_by_title(sheets_service, spreadsheet_id, sheet_title):
-    """シートタイトルからシートIDを取得"""
+def prepare_monthly_sheets(spreadsheet_id, sheets_service):
+    """1月～12月のシートを作成"""
+    months = [f"{i}月" for i in range(1, 13)]
+    existing_titles = get_existing_sheet_titles(sheets_service, spreadsheet_id)
+
+    requests = [
+        {"addSheet": {"properties": {"title": month}}}
+        for month in months if month not in existing_titles
+    ]
+
+    if not requests:
+        print("All monthly sheets already exist. No new sheets added.")
+        return
+
+    try:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests}
+        ).execute()
+        print("Monthly sheets created successfully.")
+    except Exception as e:
+        print(f"Error creating monthly sheets: {e}")
+
+
+def get_existing_sheet_titles(sheets_service, spreadsheet_id):
+    """既存のシートタイトルを取得"""
     try:
         response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        for sheet in response.get('sheets', []):
-            if sheet['properties']['title'] == sheet_title:
-                return sheet['properties']['sheetId']
-        raise ValueError(f"Sheet with title '{sheet_title}' not found.")
+        sheets = response.get('sheets', [])
+        titles = [sheet['properties']['title'] for sheet in sheets]
+        return titles
     except Exception as e:
-        print(f"Error fetching sheet ID for title '{sheet_title}': {e}")
-        raise
-
-def prepare_update_requests(sheet_title, sheet_id, class_names, month_index):
-    """Google Sheets更新用リクエストを準備"""
-    if not class_names:
-        print("Class names list is empty. Check Firebase data.")
+        print(f"Error fetching existing sheet titles: {e}")
         return []
 
-    requests = []
-
-    # 教科名を追加
-    requests.append(create_cell_update_request(sheet_id, 0, 0, "教科"))
-    requests.extend(create_cell_update_request(sheet_id, i + 1, 0, name) for i, name in enumerate(class_names))
-
-    # 日付を追加
-    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(2025, month_index + 1, 1)
-
-    for i in range(31):  # 最大31日分のデータ
-        date = start_date + timedelta(days=i)
-        if date.month != month_index + 1:  # 月が変わったら終了
-            break
-        weekday = date.weekday()
-        date_string = f"{date.strftime('%m/%d')} ({japanese_weekdays[weekday]})"
-        requests.append(create_cell_update_request(sheet_id, 0, i + 1, date_string))
-
-    return requests
 
 def main():
     """メイン関数"""
