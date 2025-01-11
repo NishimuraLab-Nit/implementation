@@ -56,48 +56,19 @@ def validate_firebase_data(sheet_id, student_course_ids, courses):
 
     return student_course_ids, valid_courses
 
-def get_existing_sheet_titles(sheets_service, sheet_id):
-    """既存のシートタイトルを取得"""
+def get_sheet_id_by_title(sheets_service, spreadsheet_id, sheet_title):
+    """シートタイトルからシートIDを取得"""
     try:
-        response = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-        sheets = response.get('sheets', [])
-        titles = [sheet['properties']['title'] for sheet in sheets]
-        return titles
+        response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        for sheet in response.get('sheets', []):
+            if sheet['properties']['title'] == sheet_title:
+                return sheet['properties']['sheetId']
+        raise ValueError(f"Sheet with title '{sheet_title}' not found.")
     except Exception as e:
-        print(f"Error fetching existing sheet titles: {e}")
-        return []
+        print(f"Error fetching sheet ID for title '{sheet_title}': {e}")
+        raise
 
-def prepare_monthly_sheets(sheet_id, sheets_service):
-    """1月～12月のシートを作成"""
-    months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
-    existing_titles = get_existing_sheet_titles(sheets_service, sheet_id)
-
-    requests = [{"addSheet": {"properties": {"title": month}}} for month in months if month not in existing_titles]
-
-    if not requests:
-        print("All monthly sheets already exist. No new sheets added.")
-        return
-
-    try:
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=sheet_id,
-            body={"requests": requests}
-        ).execute()
-        print("Monthly sheets created successfully.")
-    except Exception as e:
-        print(f"Error creating monthly sheets: {e}")
-
-def create_cell_update_request(sheet_id, row_index, column_index, value):
-    """Google Sheetsのセル更新リクエストを作成"""
-    return {
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
-            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
-            "fields": "userEnteredValue"
-        }
-    }
-
-def prepare_update_requests(sheet_id, class_names, month_index):
+def prepare_update_requests(sheet_title, sheet_id, class_names, month_index):
     """Google Sheets更新用リクエストを準備"""
     if not class_names:
         print("Class names list is empty. Check Firebase data.")
@@ -130,12 +101,12 @@ def main():
         sheets_service = get_google_sheets_service()
 
         # Firebaseから必要なデータを取得
-        sheet_id = get_firebase_data('Students/student_info/student_index/E534/sheet_id')
+        spreadsheet_id = get_firebase_data('Students/student_info/student_index/E534/sheet_id')
         student_course_ids = get_firebase_data('Students/enrollment/student_index/E534/course_id')
         courses = get_firebase_data('Courses/course_id')
 
         # データの検証と整形
-        student_course_ids, courses_dict = validate_firebase_data(sheet_id, student_course_ids, courses)
+        student_course_ids, courses_dict = validate_firebase_data(spreadsheet_id, student_course_ids, courses)
 
         # クラス名リストを作成
         class_names = [
@@ -148,18 +119,25 @@ def main():
             return
 
         # 1月～12月のシート作成
-        prepare_monthly_sheets(sheet_id, sheets_service)
+        prepare_monthly_sheets(spreadsheet_id, sheets_service)
 
         # 各月のデータを更新
         for month_index in range(12):  # 1月～12月
-            requests = prepare_update_requests(sheet_id, class_names, month_index)
+            sheet_title = f"{month_index + 1}月"
+            try:
+                sheet_id = get_sheet_id_by_title(sheets_service, spreadsheet_id, sheet_title)
+            except ValueError as e:
+                print(f"Skipping month {month_index + 1}: {e}")
+                continue
+
+            requests = prepare_update_requests(sheet_title, sheet_id, class_names, month_index)
             if not requests:
                 print(f"No update requests for {month_index + 1}月.")
                 continue
 
             try:
                 sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
+                    spreadsheetId=spreadsheet_id,
                     body={'requests': requests}
                 ).execute()
                 print(f"{month_index + 1}月のシートが正常に更新されました。")
@@ -168,6 +146,7 @@ def main():
 
     except Exception as e:
         print(f"Unexpected error: {e}")
+
 
 if __name__ == "__main__":
     main()
