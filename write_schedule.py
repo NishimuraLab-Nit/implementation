@@ -138,6 +138,10 @@ def prepare_monthly_update_requests(sheet_ids, class_names):
     """
     Prepare update requests for each month sheet.
     """
+    # 日本語の曜日名を定義
+    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+
+    # 基本的なリクエストテンプレート
     requests = [
         {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
         create_dimension_request(0, "COLUMNS", 0, 1, 100),
@@ -156,37 +160,44 @@ def prepare_monthly_update_requests(sheet_ids, class_names):
                                                  "startColumnIndex": 0, "endColumnIndex": 32}}}}
     ]
 
-    start_date = datetime(2025, 1, 1)
-    max_columns = 26  # Limit to avoid exceeding available columns
-
+    # クラス名と日付のヘッダーを作成
+    max_columns = 26  # 最大列数の制限（Excelの列数などを考慮）
     for month, sheet_title in enumerate(sheet_ids.keys(), start=1):
         sheet_id = sheet_ids[sheet_title]
 
+        # 行の高さとクラス名を設定
         requests.append(create_dimension_request(sheet_id, "ROWS", 0, 1, 120))
         requests.append(create_cell_update_request(sheet_id, 0, 0, "教科"))
         
-        # Add class names to the sheet
+        # クラス名をシートに追加
         for i, class_name in enumerate(class_names):
             requests.append(create_cell_update_request(sheet_id, i + 1, 0, class_name))
 
-        # Add date headers for the current month
+        # 日付ヘッダーを追加
         for day in range(1, min(32, max_columns)):
             try:
+                # 日付を生成
                 current_date = datetime(2025, month, day)
-                weekday = current_date.weekday()
-                date_string = f"{date.strftime('%m')}\n月\n{date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
+                weekday = current_date.weekday()  # 曜日を取得（0: 月曜日, 6: 日曜日）
+                date_string = (
+                    f"{current_date.strftime('%m')}月\n"
+                    f"{current_date.strftime('%d')}日\n"
+                    f"⌢\n{japanese_weekdays[weekday]}\n⌣"
+                )
                 requests.append(create_cell_update_request(sheet_id, 0, day, date_string))
 
-                if weekday in (5, 6):  # Saturday or Sunday
+                # 土曜日または日曜日に色付け
+                if weekday in (5, 6):  # 土曜日（5）または日曜日（6）
                     color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
-                    formula = f"=TEXT(INDIRECT(ADDRESS(1, COLUMN())), \"\")=\"{['土', '日'][weekday - 5]}\""
+                    formula = f"=TEXT(INDIRECT(ADDRESS(1, COLUMN())), \"\")=\"{japanese_weekdays[weekday]}\""
                     requests.append(create_conditional_formatting_request(
                         sheet_id, 1, len(class_names) + 1, day, day + 1, color, formula
                     ))
             except ValueError:
-                break  # Skip invalid dates for months with fewer days
+                break  # 月の末尾を超える日付はスキップ
 
     return requests
+
 
 def main():
     initialize_firebase()
