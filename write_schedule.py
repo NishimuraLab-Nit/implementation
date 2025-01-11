@@ -133,7 +133,7 @@ def add_date_headers_and_formatting(requests):
     Add date headers and conditional formatting for weekends to the request list.
     """
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(2024, 11, 1)
+    start_date = datetime(2024, 1, 1)
     end_row = 25
 
     for i in range(31):
