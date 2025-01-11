@@ -42,6 +42,20 @@ def get_firebase_data(ref_path):
         return None
 
 
+# ======== データ正規化関数 ========
+def normalize_course_ids(course_ids):
+    """
+    Firebaseから取得した`course_id`をリスト形式に変換。
+    - 辞書形式の場合は値をリストに変換。
+    """
+    if isinstance(course_ids, dict):
+        return list(course_ids.values())
+    elif isinstance(course_ids, list):
+        return course_ids
+    else:
+        return None
+
+
 # ======== Google Sheets用リクエスト作成関数 ========
 def create_cell_update_request(sheet_id, row_index, column_index, value):
     return {
@@ -53,10 +67,16 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
     }
 
 
-# その他のリクエスト作成関数は省略（元のコードのまま）
+def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+    return {
+        "updateDimensionProperties": {
+            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
+            "properties": {"pixelSize": pixel_size},
+            "fields": "pixelSize"
+        }
+    }
 
 
-# ======== 更新リクエスト準備関数 ========
 def prepare_update_requests(sheet_id, class_names):
     """Google Sheets用のバッチリクエストを準備"""
     if not class_names:
@@ -66,31 +86,48 @@ def prepare_update_requests(sheet_id, class_names):
     # 基本設定リクエスト
     requests = [
         {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
-        # その他のリクエスト...
+        create_dimension_request(0, "COLUMNS", 0, 1, 100),
+        create_dimension_request(0, "COLUMNS", 1, 32, 35),
+        create_dimension_request(0, "ROWS", 0, 1, 120),
+        {"repeatCell": {"range": {"sheetId": 0},
+                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+                        "fields": "userEnteredFormat.horizontalAlignment"}}
     ]
 
     # クラス名をセルに追加
     requests.append(create_cell_update_request(0, 0, 0, "教科"))
     requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(class_names))
 
+    # 日付列を追加
+    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    start_date = datetime(2025, 1, 1)
+
+    for i in range(31):
+        date = start_date + timedelta(days=i)
+        weekday = date.weekday()
+        date_string = f"{date.strftime('%m')}月\n{date.strftime('%d')}日\n{japanese_weekdays[weekday]}"
+        requests.append(create_cell_update_request(0, 0, i + 1, date_string))
+
     return requests
 
 
-# ======== メイン関数 ========
+# ======== メイン処理 ========
 def main():
     try:
-        # Firebase初期化
+        # FirebaseとGoogle Sheetsの初期化
         initialize_firebase()
+        sheets_service = get_google_sheets_service()
 
-        # データ取得
-        student_index = "E534"  # 必要に応じて動的に設定
+        # Firebaseから必要なデータを取得
+        student_index = "E534"  # 必要に応じて動的に指定
         sheet_id = get_firebase_data(f'Students/student_info/student_index/{student_index}/sheet_id')
         if not sheet_id:
             print(f"Error: Sheet ID not found for student_index '{student_index}'")
             return
 
-        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-        if not isinstance(student_course_ids, list):
+        raw_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
+        student_course_ids = normalize_course_ids(raw_course_ids)
+        if not student_course_ids:
             print(f"Error: Invalid course ID data for student_index '{student_index}'")
             return
 
@@ -99,11 +136,6 @@ def main():
             print("Error: Invalid courses data from Firebase")
             return
 
-        # データをログ出力
-        print(f"sheet_id: {sheet_id}")
-        print(f"student_course_ids: {student_course_ids}")
-        print(f"courses: {courses}")
-
         # クラス名を抽出
         courses_dict = {i: course for i, course in enumerate(courses) if course}
         class_names = [
@@ -111,13 +143,13 @@ def main():
             if cid in courses_dict and 'class_name' in courses_dict[cid]
         ]
 
-        # 更新リクエストの準備と実行
+        # Google Sheetsの更新リクエストを準備
         requests = prepare_update_requests(sheet_id, class_names)
         if not requests:
             print("No requests to update the sheet.")
             return
 
-        sheets_service = get_google_sheets_service()
+        # Google Sheets APIで更新
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=sheet_id,
             body={'requests': requests}
@@ -126,7 +158,6 @@ def main():
 
     except Exception as e:
         print(f"An error occurred: {e}")
-
 
 
 if __name__ == "__main__":
