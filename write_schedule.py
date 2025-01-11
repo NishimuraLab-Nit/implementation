@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+import calendar
 
 # 定数
 FIREBASE_CREDENTIALS_FILE = "firebase-adminsdk.json"
@@ -57,6 +58,41 @@ def get_sheet_id_by_title(sheets_service, spreadsheet_id, title):
         print(f"Error fetching sheet ID for title '{title}': {e}")
         return None
 
+# シートのグリッドプロパティ取得
+def get_sheet_grid_properties(sheets_service, spreadsheet_id, title):
+    try:
+        response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        for sheet in response.get('sheets', []):
+            if sheet['properties']['title'] == title:
+                return sheet['properties'].get('gridProperties', {})
+        return None
+    except Exception as e:
+        print(f"Error fetching grid properties for sheet '{title}': {e}")
+        return None
+
+# 列が不足している場合に列を追加
+def add_columns_if_needed(sheets_service, spreadsheet_id, sheet_id, required_columns):
+    try:
+        grid_properties = get_sheet_grid_properties(sheets_service, spreadsheet_id, sheet_id)
+        current_columns = grid_properties.get('columnCount', 0)
+        if current_columns < required_columns:
+            requests = [{
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {"columnCount": required_columns}
+                    },
+                    "fields": "gridProperties.columnCount"
+                }
+            }]
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": requests}
+            ).execute()
+            print(f"Added columns to sheet (Sheet ID: {sheet_id}) to match required columns.")
+    except Exception as e:
+        print(f"Error adding columns to sheet: {e}")
+
 # 月ごとのシートを準備
 def prepare_monthly_sheets(spreadsheet_id, sheets_service):
     months = [f"{i}月" for i in range(1, 13)]
@@ -90,7 +126,7 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
     }
 
 # Google Sheetsの更新リクエスト準備
-def prepare_update_requests(sheet_id, class_names, month_index):
+def prepare_update_requests(sheet_id, class_names, month_index, year=2025):
     if not class_names:
         print("Class names list is empty.")
         return []
@@ -100,11 +136,15 @@ def prepare_update_requests(sheet_id, class_names, month_index):
         create_cell_update_request(sheet_id, i + 1, 0, name) for i, name in enumerate(class_names)
     )
 
-    start_date = datetime(2025, month_index + 1, 1)
-    for i in range(31):  # 最大31日分
+    # Calculate days in the month
+    days_in_month = calendar.monthrange(year, month_index + 1)[1]
+    start_date = datetime(year, month_index + 1, 1)
+
+    required_columns = days_in_month + 1  # Days in month + 1 for the "教科" column
+    add_columns_if_needed(sheets_service, spreadsheet_id, sheet_id, required_columns)
+
+    for i in range(days_in_month):
         date = start_date + timedelta(days=i)
-        if date.month != month_index + 1:
-            break
         date_string = f"{date.strftime('%m/%d')} ({JAPANESE_WEEKDAYS[date.weekday()]})"
         requests.append(create_cell_update_request(sheet_id, 0, i + 1, date_string))
 
@@ -131,7 +171,7 @@ def main():
         class_names = [
             courses_dict[student_course_id]['class_name']
         ] if student_course_id in courses_dict else []
-        
+
         prepare_monthly_sheets(spreadsheet_id, sheets_service)
 
         # 各月のシートを更新
