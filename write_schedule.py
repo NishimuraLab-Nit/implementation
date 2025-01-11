@@ -40,15 +40,26 @@ def get_firebase_data(ref_path):
 
 
 def validate_firebase_data(sheet_id, student_course_ids, courses):
-    """Firebaseデータの検証"""
+    """Firebaseデータの検証と整形"""
     if not isinstance(sheet_id, str) or not sheet_id.strip():
         raise ValueError("シートIDが無効、または存在しません。")
 
-    if not isinstance(student_course_ids, list) or not student_course_ids:
+    # course_idをリスト形式に変換
+    if isinstance(student_course_ids, int):
+        student_course_ids = [str(student_course_ids)]
+    elif not isinstance(student_course_ids, list) or not student_course_ids:
         raise ValueError("学生のコースIDリストが無効、または存在しません。")
 
-    if not isinstance(courses, list) or not all(isinstance(course, dict) and 'class_name' in course for course in courses):
+    # CoursesデータをフィルタリングしてNoneを除外
+    valid_courses = [
+        course for course in courses
+        if isinstance(course, dict) and 'class_name' in course
+    ]
+
+    if not valid_courses:
         raise ValueError("コースデータが無効、または不完全です。")
+
+    return student_course_ids, valid_courses
 
 
 def get_existing_sheet_titles(sheets_service, sheet_id):
@@ -137,7 +148,7 @@ def main():
         student_course_ids, courses = validate_firebase_data(sheet_id, student_course_ids, courses)
 
         # コース情報を辞書化
-        courses_dict = {str(i): course for i, course in enumerate(courses) if course}
+        courses_dict = {str(i): course for i, course in enumerate(courses)}
 
         # クラス名リストを作成
         class_names = [
@@ -166,6 +177,7 @@ def main():
 
     except Exception as e:
         print(f"予期しないエラーが発生しました: {e}")
+
 
 if __name__ == "__main__":
     main()
