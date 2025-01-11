@@ -143,9 +143,9 @@ def prepare_monthly_update_requests(sheet_ids, class_names):
 
                 if weekday in (5, 6):  # Saturday or Sunday
                     color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
+                    formula = f"=TEXT(INDIRECT(ADDRESS(1, COLUMN())), \"\")=\"{['土', '日'][weekday - 5]}\""
                     requests.append(create_conditional_formatting_request(
-                        sheet_id, 1, len(class_names) + 1, day, day + 1, color,
-                        f"=ISNUMBER(SEARCH('{['土', '日'][weekday - 5]}', INDIRECT(ADDRESS(1, COLUMN()))))"
+                        sheet_id, 1, len(class_names) + 1, day, day + 1, color, formula
                     ))
             except ValueError:
                 break  # Skip invalid dates for months with fewer days
