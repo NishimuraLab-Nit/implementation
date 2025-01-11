@@ -110,6 +110,24 @@ def prepare_update_requests(sheet_id, class_names):
     return requests
 
 
+def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
+    """
+    Create a request to apply conditional formatting to a specified range in the Google Sheet.
+    """
+    return {
+        "addConditionalFormatRule": {
+            "rule": {
+                "ranges": [{"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                            "startColumnIndex": start_col, "endColumnIndex": end_col}],
+                "booleanRule": {
+                    "condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": formula}]},
+                    "format": {"backgroundColor": color}
+                }
+            },
+            "index": 0
+        }
+    }
+
 def add_date_headers_and_formatting(requests):
     """
     Add date headers and conditional formatting for weekends to the request list.
@@ -132,6 +150,7 @@ def add_date_headers_and_formatting(requests):
                 0, 0, end_row, i + 1, i + 2, color,
                 f'=ISNUMBER(SEARCH("{japanese_weekdays[weekday]}", INDIRECT(ADDRESS(1, COLUMN()))))'
             ))
+
 
 
 def main():
