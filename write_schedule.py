@@ -92,27 +92,34 @@ def create_monthly_sheets(sheets_service, spreadsheet_id):
     """
     Create sheets for each month and return their IDs.
     """
-    requests = []
+    # Fetch existing sheet names
+    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    existing_sheets = {sheet['properties']['title']: sheet['properties']['sheetId'] 
+                       for sheet in spreadsheet.get('sheets', [])}
+    
     sheet_ids = {}
 
     for month in range(1, 13):
         sheet_title = f"{month}月"
-        requests.append({
-            "addSheet": {
-                "properties": {
-                    "title": sheet_title
+        if sheet_title in existing_sheets:
+            print(f"Sheet '{sheet_title}' already exists, skipping creation.")
+            sheet_ids[sheet_title] = existing_sheets[sheet_title]
+        else:
+            # Add new sheet request
+            requests = [{
+                "addSheet": {
+                    "properties": {
+                        "title": sheet_title
+                    }
                 }
-            }
-        })
-
-    response = sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={"requests": requests}
-    ).execute()
-
-    for reply in response.get("replies", []):
-        properties = reply.get("addSheet", {}).get("properties", {})
-        sheet_ids[properties["title"]] = properties["sheetId"]
+            }]
+            response = sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": requests}
+            ).execute()
+            sheet_id = response['replies'][0]['addSheet']['properties']['sheetId']
+            sheet_ids[sheet_title] = sheet_id
+            print(f"Sheet '{sheet_title}' created with ID: {sheet_id}")
 
     return sheet_ids
 
