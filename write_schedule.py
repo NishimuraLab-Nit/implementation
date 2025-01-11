@@ -88,11 +88,13 @@ def create_conditional_formatting_request(sheet_id, start_row, end_row, start_co
         }
     }
 
-def create_monthly_sheets_request():
+def create_monthly_sheets(sheets_service, spreadsheet_id):
     """
-    Create requests to add sheets for each month from January to December 2025.
+    Create sheets for each month and return their IDs.
     """
     requests = []
+    sheet_ids = {}
+
     for month in range(1, 13):
         sheet_title = f"{month}月"
         requests.append({
@@ -102,17 +104,27 @@ def create_monthly_sheets_request():
                 }
             }
         })
-    return requests
 
-def prepare_monthly_update_requests(sheet_titles, class_names):
+    response = sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": requests}
+    ).execute()
+
+    for reply in response.get("replies", []):
+        properties = reply.get("addSheet", {}).get("properties", {})
+        sheet_ids[properties["title"]] = properties["sheetId"]
+
+    return sheet_ids
+
+def prepare_monthly_update_requests(sheet_ids, class_names):
     """
     Prepare update requests for each month sheet.
     """
     requests = []
     start_date = datetime(2025, 1, 1)
 
-    for month, sheet_title in enumerate(sheet_titles, start=1):
-        sheet_id = month  # Using the month index as sheet_id for simplicity.
+    for month, sheet_title in enumerate(sheet_ids.keys(), start=1):
+        sheet_id = sheet_ids[sheet_title]
 
         requests.append(create_dimension_request(sheet_id, "ROWS", 0, 1, 120))
         requests.append(create_cell_update_request(sheet_id, 0, 0, "教科"))
@@ -122,7 +134,6 @@ def prepare_monthly_update_requests(sheet_titles, class_names):
             requests.append(create_cell_update_request(sheet_id, i + 1, 0, class_name))
 
         # Add date headers for the current month
-        date = start_date + timedelta(days=(month - 1) * 31)
         for day in range(1, 32):
             try:
                 current_date = datetime(2025, month, day)
@@ -171,10 +182,11 @@ def main():
 
     print("Course Names:", course_names)
 
-    # Create requests for adding sheets and populating them
-    sheet_titles = [f"{month}月" for month in range(1, 13)]
-    requests = create_monthly_sheets_request()
-    requests.extend(prepare_monthly_update_requests(sheet_titles, course_names))
+    # Create sheets for each month and get their IDs
+    sheet_ids = create_monthly_sheets(sheets_service, sheet_id)
+
+    # Prepare update requests for each month
+    requests = prepare_monthly_update_requests(sheet_ids, course_names)
 
     sheets_service.spreadsheets().batchUpdate(
         spreadsheetId=sheet_id,
