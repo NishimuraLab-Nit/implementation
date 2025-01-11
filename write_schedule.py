@@ -46,6 +46,48 @@ def get_firebase_data(ref_path):
         print(f"Failed to get data from Firebase at path {ref_path}: {e}")
         raise
 
+def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+    """
+    Create a request to update the dimensions (row/column size) in the Google Sheet.
+    """
+    return {
+        "updateDimensionProperties": {
+            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
+            "properties": {"pixelSize": pixel_size},
+            "fields": "pixelSize"
+        }
+    }
+
+def create_cell_update_request(sheet_id, row_index, column_index, value):
+    """
+    Create a request to update a specific cell in the Google Sheet.
+    """
+    return {
+        "updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
+            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
+            "fields": "userEnteredValue"
+        }
+    }
+
+def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
+    """
+    Create a request to apply conditional formatting to a specified range in the Google Sheet.
+    """
+    return {
+        "addConditionalFormatRule": {
+            "rule": {
+                "ranges": [{"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                            "startColumnIndex": start_col, "endColumnIndex": end_col}],
+                "booleanRule": {
+                    "condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": formula}]},
+                    "format": {"backgroundColor": color}
+                }
+            },
+            "index": 0
+        }
+    }
+
 def create_monthly_sheets_request():
     """
     Create requests to add sheets for each month from January to December 2025.
