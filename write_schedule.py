@@ -5,33 +5,49 @@ from googleapiclient.discovery import build
 from datetime import datetime
 
 def initialize_firebase():
-    firebase_cred = credentials.Certificate("firebase-adminsdk.json")
-    initialize_app(firebase_cred, {
-        'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-    })
-
+    """
+    Initialize Firebase app using credentials from an environment variable.
+    """
+    try:
+        firebase_cred_path = os.getenv('FIREBASE_CREDENTIALS_PATH', 'firebase-adminsdk.json')
+        firebase_cred = credentials.Certificate(firebase_cred_path)
+        initialize_app(firebase_cred, {
+            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+        })
+    except Exception as e:
+        print(f"Error initializing Firebase: {e}")
+        raise
 
 def get_google_sheets_service():
-    scopes = ['https://www.googleapis.com/auth/spreadsheets']
-    google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
-    return build('sheets', 'v4', credentials=google_creds)
+    """
+    Initialize and return the Google Sheets API service.
+    """
+    try:
+        scopes = ['https://www.googleapis.com/auth/spreadsheets']
+        google_cred_path = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
+        google_creds = Credentials.from_service_account_file(google_cred_path, scopes=scopes)
+        return build('sheets', 'v4', credentials=google_creds)
+    except Exception as e:
+        print(f"Error initializing Google Sheets service: {e}")
+        raise
 
+def get_firebase_data(reference_path):
+    """
+    Retrieve data from Firebase at the specified reference path.
+    """
+    try:
+        data = db.reference(reference_path).get()
+        if data is None:
+            print(f"No data found at path: {reference_path}")
+        return data
+    except Exception as e:
+        print(f"Error retrieving data from Firebase at path {reference_path}: {e}")
+        raise
 
-def get_firebase_data(ref_path):
-    return db.reference(ref_path).get()
-
-
-def create_cell_update_request(sheet_id, row_index, column_index, value):
-    return {
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
-            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
-            "fields": "userEnteredValue"
-        }
-    }
-
-
-def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+def create_dimension_update(sheet_id, dimension, start_index, end_index, pixel_size):
+    """
+    Create a request to update dimensions (rows/columns) in a Google Sheet.
+    """
     return {
         "updateDimensionProperties": {
             "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
@@ -40,8 +56,22 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
         }
     }
 
+def create_cell_update(sheet_id, row_index, column_index, value):
+    """
+    Create a request to update a specific cell in a Google Sheet.
+    """
+    return {
+        "updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
+            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
+            "fields": "userEnteredValue"
+        }
+    }
 
-def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
+def create_conditional_format(sheet_id, start_row, end_row, start_col, end_col, color, formula):
+    """
+    Create a request to apply conditional formatting to a range in a Google Sheet.
+    """
     return {
         "addConditionalFormatRule": {
             "rule": {
@@ -56,18 +86,32 @@ def create_conditional_formatting_request(sheet_id, start_row, end_row, start_co
         }
     }
 
+def create_monthly_sheets(sheets_service, spreadsheet_id):
+    """
+    Create sheets for each month if they do not already exist, and return their IDs.
+    """
+    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    existing_sheets = {sheet['properties']['title']: sheet['properties']['sheetId'] 
+                       for sheet in spreadsheet.get('sheets', [])}
+    
+    sheet_ids = {}
 
-def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
-    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
-    return {
-        "repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
-                      "startColumnIndex": start_col, "endColumnIndex": end_col},
-            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
-            "fields": "userEnteredFormat.backgroundColor"
-        }
-    }
+    for month in range(1, 13):
+        sheet_title = f"{month}月"
+        if sheet_title in existing_sheets:
+            print(f"Sheet '{sheet_title}' already exists.")
+            sheet_ids[sheet_title] = existing_sheets[sheet_title]
+        else:
+            requests = [{"addSheet": {"properties": {"title": sheet_title}}}]
+            response = sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": requests}
+            ).execute()
+            sheet_id = response['replies'][0]['addSheet']['properties']['sheetId']
+            sheet_ids[sheet_title] = sheet_id
+            print(f"Sheet '{sheet_title}' created with ID: {sheet_id}")
 
+    return sheet_ids
 
 def prepare_update_requests(sheet_ids, class_names):
     """
@@ -86,15 +130,6 @@ def prepare_update_requests(sheet_ids, class_names):
         # Add class names in the first column
         for i, class_name in enumerate(class_names):
             requests.append(create_cell_update(sheet_id, i + 1, 0, class_name))
-
-        # Ensure the sheet has at least 32 columns
-        requests.append({
-            "appendDimension": {
-                "sheetId": sheet_id,
-                "dimension": "COLUMNS",
-                "length": 32  # Extend to 32 columns (for 31 days + 1 column for class names)
-            }
-        })
 
         # Add date headers with weekday labels
         for day in range(1, 32):  # Limit to 31 days
@@ -117,6 +152,7 @@ def prepare_update_requests(sheet_ids, class_names):
                 break  # Skip invalid dates beyond the month's end
 
     return requests
+
 def main():
     """
     Main function to initialize services, retrieve data, and update Google Sheets.
