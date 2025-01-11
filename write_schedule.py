@@ -2,11 +2,11 @@ import os
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from datetime import datetime, timedelta
+from datetime import datetime
 
 def initialize_firebase():
     """
-    Initialize the Firebase app with credentials from the environment variable.
+    Initialize Firebase app using credentials from an environment variable.
     """
     try:
         firebase_cred_path = os.getenv('FIREBASE_CREDENTIALS_PATH', 'firebase-adminsdk.json')
@@ -15,7 +15,7 @@ def initialize_firebase():
             'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
         })
     except Exception as e:
-        print(f"Failed to initialize Firebase: {e}")
+        print(f"Error initializing Firebase: {e}")
         raise
 
 def get_google_sheets_service():
@@ -28,27 +28,25 @@ def get_google_sheets_service():
         google_creds = Credentials.from_service_account_file(google_cred_path, scopes=scopes)
         return build('sheets', 'v4', credentials=google_creds)
     except Exception as e:
-        print(f"Failed to initialize Google Sheets service: {e}")
+        print(f"Error initializing Google Sheets service: {e}")
         raise
 
-def get_firebase_data(ref_path):
+def get_firebase_data(reference_path):
     """
     Retrieve data from Firebase at the specified reference path.
     """
     try:
-        data = db.reference(ref_path).get()
+        data = db.reference(reference_path).get()
         if data is None:
-            print(f"No data found at path: {ref_path}")
-        else:
-            print(f"Data retrieved from path {ref_path}: {data}")
+            print(f"No data found at path: {reference_path}")
         return data
     except Exception as e:
-        print(f"Failed to get data from Firebase at path {ref_path}: {e}")
+        print(f"Error retrieving data from Firebase at path {reference_path}: {e}")
         raise
 
-def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+def create_dimension_update(sheet_id, dimension, start_index, end_index, pixel_size):
     """
-    Create a request to update the dimensions (row/column size) in the Google Sheet.
+    Create a request to update dimensions (rows/columns) in a Google Sheet.
     """
     return {
         "updateDimensionProperties": {
@@ -58,9 +56,9 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
         }
     }
 
-def create_cell_update_request(sheet_id, row_index, column_index, value):
+def create_cell_update(sheet_id, row_index, column_index, value):
     """
-    Create a request to update a specific cell in the Google Sheet.
+    Create a request to update a specific cell in a Google Sheet.
     """
     return {
         "updateCells": {
@@ -70,9 +68,9 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
         }
     }
 
-def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
+def create_conditional_format(sheet_id, start_row, end_row, start_col, end_col, color, formula):
     """
-    Create a request to apply conditional formatting to a specified range in the Google Sheet.
+    Create a request to apply conditional formatting to a range in a Google Sheet.
     """
     return {
         "addConditionalFormatRule": {
@@ -90,9 +88,8 @@ def create_conditional_formatting_request(sheet_id, start_row, end_row, start_co
 
 def create_monthly_sheets(sheets_service, spreadsheet_id):
     """
-    Create sheets for each month and return their IDs.
+    Create sheets for each month if they do not already exist, and return their IDs.
     """
-    # Fetch existing sheet names
     spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
     existing_sheets = {sheet['properties']['title']: sheet['properties']['sheetId'] 
                        for sheet in spreadsheet.get('sheets', [])}
@@ -102,17 +99,10 @@ def create_monthly_sheets(sheets_service, spreadsheet_id):
     for month in range(1, 13):
         sheet_title = f"{month}月"
         if sheet_title in existing_sheets:
-            print(f"Sheet '{sheet_title}' already exists, skipping creation.")
+            print(f"Sheet '{sheet_title}' already exists.")
             sheet_ids[sheet_title] = existing_sheets[sheet_title]
         else:
-            # Add new sheet request
-            requests = [{
-                "addSheet": {
-                    "properties": {
-                        "title": sheet_title
-                    }
-                }
-            }]
+            requests = [{"addSheet": {"properties": {"title": sheet_title}}}]
             response = sheets_service.spreadsheets().batchUpdate(
                 spreadsheetId=spreadsheet_id,
                 body={"requests": requests}
@@ -123,83 +113,50 @@ def create_monthly_sheets(sheets_service, spreadsheet_id):
 
     return sheet_ids
 
-def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
-    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
-    return {
-        "repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
-                      "startColumnIndex": start_col, "endColumnIndex": end_col},
-            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
-            "fields": "userEnteredFormat.backgroundColor"
-        }
-    }
-    
-def prepare_monthly_update_requests(sheet_ids, class_names):
+def prepare_update_requests(sheet_ids, class_names):
     """
-    Prepare update requests for each month sheet.
+    Prepare requests to format and update each monthly sheet with headers and class names.
     """
-    # 日本語の曜日名を定義
-    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    requests = []
 
-    # 基本的なリクエストテンプレート
-    requests = [
-        {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
-        create_dimension_request(0, "COLUMNS", 0, 1, 100),
-        create_dimension_request(0, "COLUMNS", 1, 32, 35),
-        create_dimension_request(0, "ROWS", 0, 1, 120),
-        {"repeatCell": {"range": {"sheetId": 0},
-                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-                        "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
-                                     "endColumnIndex": 32},
-                           "top": {"style": "SOLID", "width": 1},
-                           "bottom": {"style": "SOLID", "width": 1},
-                           "left": {"style": "SOLID", "width": 1},
-                           "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
-                                                 "startColumnIndex": 0, "endColumnIndex": 32}}}}
-    ]
-
-    # クラス名と日付のヘッダーを作成
-    max_columns = 26  # 最大列数の制限（Excelの列数などを考慮）
     for month, sheet_title in enumerate(sheet_ids.keys(), start=1):
         sheet_id = sheet_ids[sheet_title]
 
-        # 行の高さとクラス名を設定
-        requests.append(create_dimension_request(sheet_id, "ROWS", 0, 1, 120))
-        requests.append(create_cell_update_request(sheet_id, 0, 0, "教科"))
-        
-        # クラス名をシートに追加
-        for i, class_name in enumerate(class_names):
-            requests.append(create_cell_update_request(sheet_id, i + 1, 0, class_name))
+        # Set row height and add column headers
+        requests.append(create_dimension_update(sheet_id, "ROWS", 0, 1, 120))
+        requests.append(create_cell_update(sheet_id, 0, 0, "教科"))
 
-        # 日付ヘッダーを追加
-        for day in range(1, min(32, max_columns)):
+        # Add class names in the first column
+        for i, class_name in enumerate(class_names):
+            requests.append(create_cell_update(sheet_id, i + 1, 0, class_name))
+
+        # Add date headers with weekday labels
+        for day in range(1, 32):  # Limit to 31 days
             try:
-                # 日付を生成
                 current_date = datetime(2025, month, day)
-                weekday = current_date.weekday()  # 曜日を取得（0: 月曜日, 6: 日曜日）
+                weekday = current_date.weekday()  # 0 = Monday, 6 = Sunday
                 date_string = (
                     f"{current_date.strftime('%m')}月\n"
                     f"{current_date.strftime('%d')}日\n"
-                    f"⌢\n{japanese_weekdays[weekday]}\n⌣"
+                    f"{weekdays[weekday]}"
                 )
-                requests.append(create_cell_update_request(sheet_id, 0, day, date_string))
+                requests.append(create_cell_update(sheet_id, 0, day, date_string))
 
-                # 土曜日または日曜日に色付け
-                if weekday in (5, 6):  # 土曜日（5）または日曜日（6）
+                # Highlight weekends
+                if weekday in (5, 6):  # Saturday or Sunday
                     color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
-                    formula = f"=TEXT(INDIRECT(ADDRESS(1, COLUMN())), \"\")=\"{japanese_weekdays[weekday]}\""
-                    requests.append(create_conditional_formatting_request(
-                        sheet_id, 1, len(class_names) + 1, day, day + 1, color, formula
-                    ))
+                    formula = f"=TEXT(INDIRECT(ADDRESS(1, COLUMN())), \"\")=\"{weekdays[weekday]}\""
+                    requests.append(create_conditional_format(sheet_id, 1, len(class_names) + 1, day, day + 1, color, formula))
             except ValueError:
-                break  # 月の末尾を超える日付はスキップ
+                break  # Skip invalid dates beyond the month's end
 
     return requests
 
-
 def main():
+    """
+    Main function to initialize services, retrieve data, and update Google Sheets.
+    """
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
@@ -213,10 +170,6 @@ def main():
     student_course_ids = get_firebase_data(course_id_path)
     courses = get_firebase_data(courses_path)
 
-    print("Sheet ID:", sheet_id)
-    print("Student Course IDs:", student_course_ids)
-    print("Courses:", courses)
-
     if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
         print("Invalid data retrieved from Firebase.")
         return
@@ -227,14 +180,11 @@ def main():
         if cid in courses_dict and 'course_name' in courses_dict[cid]
     ]
 
-    print("Course Names:", course_names)
-
-    # Create sheets for each month and get their IDs
+    # Create monthly sheets and prepare update requests
     sheet_ids = create_monthly_sheets(sheets_service, sheet_id)
+    requests = prepare_update_requests(sheet_ids, course_names)
 
-    # Prepare update requests for each month
-    requests = prepare_monthly_update_requests(sheet_ids, course_names)
-
+    # Execute batch update
     sheets_service.spreadsheets().batchUpdate(
         spreadsheetId=sheet_id,
         body={'requests': requests}
