@@ -3,102 +3,97 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 
+# Constants
+FIREBASE_CREDENTIALS_FILE = "firebase-adminsdk.json"
+GOOGLE_CREDENTIALS_FILE = "google-credentials.json"
+FIREBASE_DATABASE_URL = "https://test-51ebc-default-rtdb.firebaseio.com/"
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+MONTHS = [f"{i}月" for i in range(1, 13)]
+JAPANESE_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
+
 
 def initialize_firebase():
-    """Firebaseの初期化"""
+    """Initialize Firebase."""
     try:
-        firebase_cred = credentials.Certificate("firebase-adminsdk.json")
-        initialize_app(firebase_cred, {
-            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-        })
-        print("Firebaseの初期化に成功しました。")
+        firebase_cred = credentials.Certificate(FIREBASE_CREDENTIALS_FILE)
+        initialize_app(firebase_cred, {'databaseURL': FIREBASE_DATABASE_URL})
+        print("Firebase initialized successfully.")
     except Exception as e:
-        print(f"Firebaseの初期化中にエラーが発生しました: {e}")
-        raise
+        raise RuntimeError(f"Error initializing Firebase: {e}")
 
 
 def get_google_sheets_service():
-    """Google Sheets APIのサービスを取得"""
+    """Get Google Sheets API service."""
     try:
-        scopes = ['https://www.googleapis.com/auth/spreadsheets']
-        google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
+        google_creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS_FILE, scopes=SCOPES)
         return build('sheets', 'v4', credentials=google_creds)
     except Exception as e:
-        print(f"Google Sheets APIの初期化中にエラーが発生しました: {e}")
-        raise
+        raise RuntimeError(f"Error initializing Google Sheets API: {e}")
 
 
 def get_firebase_data(ref_path):
-    """Firebaseからデータを取得"""
+    """Fetch data from Firebase."""
     try:
         data = db.reference(ref_path).get()
-        print(f"Firebaseからデータを取得しました ({ref_path}): {data}")
+        print(f"Data fetched from Firebase ({ref_path}): {data}")
         return data
     except Exception as e:
-        print(f"Firebaseからデータを取得中にエラーが発生しました ({ref_path}): {e}")
+        print(f"Error fetching data from Firebase ({ref_path}): {e}")
         return None
 
 
 def validate_firebase_data(sheet_id, student_course_ids, courses):
-    """Firebaseデータの検証と整形"""
+    """Validate and structure Firebase data."""
     if not isinstance(sheet_id, str) or not sheet_id.strip():
-        raise ValueError("シートIDが無効、または存在しません。")
+        raise ValueError("Invalid or missing Sheet ID.")
 
-    # course_idをリスト形式に変換
     if isinstance(student_course_ids, int):
-        student_course_ids = [str(student_course_ids)]  # 整数をリストに変換
+        student_course_ids = [str(student_course_ids)]
     elif isinstance(student_course_ids, str):
-        student_course_ids = [student_course_ids]  # 文字列の場合もリストに変換
+        student_course_ids = [student_course_ids]
     elif not isinstance(student_course_ids, list) or not student_course_ids:
-        raise ValueError("学生のコースIDリストが無効、または存在しません。")
+        raise ValueError("Invalid or missing student course IDs.")
 
-    # CoursesデータをフィルタリングしてNoneを除外
-    valid_courses = [
-        course for course in courses
-        if isinstance(course, dict) and 'class_name' in course
-    ]
-
+    valid_courses = [course for course in courses if isinstance(course, dict) and 'class_name' in course]
     if not valid_courses:
-        raise ValueError("コースデータが無効、または不完全です。")
+        raise ValueError("Invalid or incomplete course data.")
 
     return student_course_ids, valid_courses
 
 
 def get_existing_sheet_titles(sheets_service, sheet_id):
-    """既存のシートタイトルを取得"""
+    """Retrieve existing sheet titles."""
     try:
         response = sheets_service.spreadsheets().get(spreadsheetId=sheet_id).execute()
-        sheets = response.get('sheets', [])
-        titles = [sheet['properties']['title'] for sheet in sheets]
-        return titles
+        return [sheet['properties']['title'] for sheet in response.get('sheets', [])]
     except Exception as e:
-        print(f"既存のシートタイトルを取得中にエラーが発生しました: {e}")
+        print(f"Error retrieving sheet titles: {e}")
         return []
 
 
-def prepare_monthly_sheets(sheet_id, sheets_service):
-    """1月～12月のシートを作成"""
-    months = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
+def create_monthly_sheets(sheet_id, sheets_service):
+    """Create sheets for each month if they don't already exist."""
     existing_titles = get_existing_sheet_titles(sheets_service, sheet_id)
-
-    requests = [{"addSheet": {"properties": {"title": month}}} for month in months if month not in existing_titles]
+    requests = [
+        {"addSheet": {"properties": {"title": month}}}
+        for month in MONTHS if month not in existing_titles
+    ]
 
     if not requests:
-        print("すべての月のシートが既に存在しています。新しいシートは追加されませんでした。")
+        print("All monthly sheets already exist. No new sheets added.")
         return
 
     try:
         sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=sheet_id,
-            body={"requests": requests}
+            spreadsheetId=sheet_id, body={"requests": requests}
         ).execute()
-        print("月ごとのシートが正常に作成されました。")
+        print("Monthly sheets created successfully.")
     except Exception as e:
-        print(f"月ごとのシートを作成中にエラーが発生しました: {e}")
+        print(f"Error creating monthly sheets: {e}")
 
 
 def create_cell_update_request(sheet_id, row_index, column_index, value):
-    """Google Sheetsのセル更新リクエストを作成"""
+    """Create a cell update request for Google Sheets."""
     return {
         "updateCells": {
             "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
@@ -109,76 +104,64 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
 
 
 def prepare_update_requests(sheet_id, class_names, month_index):
-    """Google Sheets更新用リクエストを準備"""
+    """Prepare update requests for Google Sheets."""
     if not class_names:
-        print("クラス名のリストが空です。Firebaseから取得したデータを確認してください。")
+        print("Class names list is empty. Check Firebase data.")
         return []
 
-    requests = []
+    requests = [create_cell_update_request(sheet_id, 0, 0, "教科")]
+    requests.extend(
+        create_cell_update_request(sheet_id, i + 1, 0, name) for i, name in enumerate(class_names)
+    )
 
-    # 教科名を追加
-    requests.append(create_cell_update_request(sheet_id, 0, 0, "教科"))
-    requests.extend(create_cell_update_request(sheet_id, i + 1, 0, name) for i, name in enumerate(class_names))
-
-    # 日付を追加
-    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(2025, month_index + 1, 1)
-
-    for i in range(31):  # 最大31日分のデータ
+    for i in range(31):
         date = start_date + timedelta(days=i)
-        if date.month != month_index + 1:  # 月が変わったら終了
+        if date.month != month_index + 1:
             break
-        weekday = date.weekday()
-        date_string = f"{date.strftime('%m/%d')} ({japanese_weekdays[weekday]})"
+        weekday = JAPANESE_WEEKDAYS[date.weekday()]
+        date_string = f"{date.strftime('%m/%d')} ({weekday})"
         requests.append(create_cell_update_request(sheet_id, 0, i + 1, date_string))
 
     return requests
 
 
 def main():
-    """メイン関数"""
+    """Main function."""
     try:
         initialize_firebase()
         sheets_service = get_google_sheets_service()
 
-        # Firebaseから必要なデータを取得
         sheet_id = get_firebase_data('Students/student_info/student_index/E534/sheet_id')
         student_course_ids = get_firebase_data('Students/enrollment/student_index/E534/course_id')
         courses = get_firebase_data('Courses/course_id')
 
-        # データの検証と整形
         student_course_ids, courses = validate_firebase_data(sheet_id, student_course_ids, courses)
-
-        # コース情報を辞書化
         courses_dict = {str(i): course for i, course in enumerate(courses)}
 
-        # クラス名リストを作成
         class_names = [
             courses_dict[cid]['class_name'] for cid in student_course_ids
             if cid in courses_dict and 'class_name' in courses_dict[cid]
         ]
 
-        # 1月～12月のシート作成
-        prepare_monthly_sheets(sheet_id, sheets_service)
+        create_monthly_sheets(sheet_id, sheets_service)
 
-        # 各月のデータを更新
-        for month_index in range(12):  # 1月～12月
+        for month_index in range(12):
             requests = prepare_update_requests(sheet_id, class_names, month_index)
             if not requests:
-                print(f"{month_index + 1}月のシートを更新するリクエストがありません。")
+                print(f"No update requests for {month_index + 1}月.")
                 continue
 
             try:
                 sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body={'requests': requests}
+                    spreadsheetId=sheet_id, body={'requests': requests}
                 ).execute()
-                print(f"{month_index + 1}月のシートが正常に更新されました。")
+                print(f"{month_index + 1}月 sheet updated successfully.")
             except Exception as e:
-                print(f"{month_index + 1}月のシートを更新中にエラーが発生しました: {e}")
+                print(f"Error updating {month_index + 1}月 sheet: {e}")
 
     except Exception as e:
-        print(f"予期しないエラーが発生しました: {e}")
+        print(f"Unexpected error: {e}")
 
 
 if __name__ == "__main__":
