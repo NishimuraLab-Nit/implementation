@@ -50,7 +50,6 @@ def get_firebase_data(ref_path):
         raise
 
 
-
 def create_cell_update_request(sheet_id, row_index, column_index, value):
     """
     Create a request to update a specific cell in the Google Sheet.
@@ -60,6 +59,19 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
             "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
             "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
             "fields": "userEnteredValue"
+        }
+    }
+
+
+def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+    """
+    Create a request to update the dimensions (row/column size) in the Google Sheet.
+    """
+    return {
+        "updateDimensionProperties": {
+            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
+            "properties": {"pixelSize": pixel_size},
+            "fields": "pixelSize"
         }
     }
 
@@ -93,11 +105,7 @@ def prepare_update_requests(sheet_id, class_names):
     requests.append(create_cell_update_request(0, 0, 0, "教科"))
     requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(class_names))
 
-    # Handle dates
     add_date_headers_and_formatting(requests)
-
-    requests.append(create_black_background_request(0, 25, 1000, 0, 1000))
-    requests.append(create_black_background_request(0, 0, 1000, 32, 1000))
 
     return requests
 
@@ -107,7 +115,7 @@ def add_date_headers_and_formatting(requests):
     Add date headers and conditional formatting for weekends to the request list.
     """
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(2025, 1, 1)
+    start_date = datetime(2024, 11, 1)
     end_row = 25
 
     for i in range(31):
@@ -127,40 +135,43 @@ def add_date_headers_and_formatting(requests):
 
 
 def main():
-    try:
-        initialize_firebase()
-        sheets_service = get_google_sheets_service()
+    initialize_firebase()
+    sheets_service = get_google_sheets_service()
 
-        sheet_id = get_firebase_data('Students/student_info/student_index/{student_index}/sheet_id')
-        student_course_ids = get_firebase_data('Students/enrollment/student_index/{student_index}/course_id')
-        courses = get_firebase_data('Courses/course_id')
+    student_index = os.getenv('STUDENT_INDEX', 'E534')  # 環境変数からstudent_indexを取得
 
-        print("Sheet ID:", sheet_id)
-        print("Student Course IDs:", student_course_ids)
-        print("Courses:", courses)
+    sheet_id_path = f'Students/student_info/student_index/{student_index}/sheet_id'
+    course_id_path = f'Students/enrollment/student_index/{student_index}/course_id'
+    courses_path = 'Courses/course_id'
 
-        if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
-            print("Invalid data retrieved from Firebase.")
-            return
+    sheet_id = get_firebase_data(sheet_id_path)
+    student_course_ids = get_firebase_data(course_id_path)
+    courses = get_firebase_data(courses_path)
 
-        courses_dict = {i: course for i, course in enumerate(courses) if course}
-        class_names = [
-            courses_dict[cid]['class_name'] for cid in student_course_ids
-            if cid in courses_dict and 'class_name' in courses_dict[cid]
-        ]
+    print("Sheet ID:", sheet_id)
+    print("Student Course IDs:", student_course_ids)
+    print("Courses:", courses)
 
-        requests = prepare_update_requests(sheet_id, class_names)
-        if not requests:
-            print("No requests to update the sheet.")
-            return
+    if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
+        print("Invalid data retrieved from Firebase.")
+        return
 
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=sheet_id,
-            body={'requests': requests}
-        ).execute()
-        print("Sheet updated successfully.")
-    except Exception as e:
-        print(f"An error occurred: {e}")
+    courses_dict = {i: course for i, course in enumerate(courses) if course}
+    class_names = [
+        courses_dict[cid]['class_name'] for cid in student_course_ids
+        if cid in courses_dict and 'class_name' in courses_dict[cid]
+    ]
+
+    requests = prepare_update_requests(sheet_id, class_names)
+    if not requests:
+        print("No requests to update the sheet.")
+        return
+
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={'requests': requests}
+    ).execute()
+    print("Sheet updated successfully.")
 
 
 if __name__ == "__main__":
