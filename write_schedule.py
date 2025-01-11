@@ -39,10 +39,16 @@ def get_firebase_data(ref_path):
     Retrieve data from Firebase at the specified reference path.
     """
     try:
-        return db.reference(ref_path).get()
+        data = db.reference(ref_path).get()
+        if data is None:
+            print(f"No data found at path: {ref_path}")
+        else:
+            print(f"Data retrieved from path {ref_path}: {data}")
+        return data
     except Exception as e:
-        print(f"Failed to get data from Firebase: {e}")
+        print(f"Failed to get data from Firebase at path {ref_path}: {e}")
         raise
+
 
 
 def create_cell_update_request(sheet_id, row_index, column_index, value):
