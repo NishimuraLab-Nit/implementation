@@ -126,7 +126,7 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
     }
 
 # Google Sheetsの更新リクエスト準備
-def prepare_update_requests(sheet_id, class_names, month_index, year=2025):
+def prepare_update_requests(sheets_service, spreadsheet_id, sheet_id, class_names, month_index, year=2025):
     if not class_names:
         print("Class names list is empty.")
         return []
@@ -183,7 +183,9 @@ def main():
                 print(f"Sheet ID for {title} not found. Skipping update.")
                 continue
 
-            requests = prepare_update_requests(sheet_id, class_names, month_index)
+            requests = prepare_update_requests(
+                sheets_service, spreadsheet_id, sheet_id, class_names, month_index
+            )
             if not requests:
                 print(f"No update requests for {title}.")
                 continue
