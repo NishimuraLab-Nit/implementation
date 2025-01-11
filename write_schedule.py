@@ -1,121 +1,26 @@
-from datetime import datetime, timedelta
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-import calendar
+from datetime import datetime, timedelta
 
-# 定数
-FIREBASE_CREDENTIALS_FILE = "firebase-adminsdk.json"
-GOOGLE_CREDENTIALS_FILE = "google-credentials.json"
-DATABASE_URL = "https://test-51ebc-default-rtdb.firebaseio.com/"
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
-JAPANESE_WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]
 
-# Firebase初期化
 def initialize_firebase():
-    try:
-        firebase_cred = credentials.Certificate(FIREBASE_CREDENTIALS_FILE)
-        initialize_app(firebase_cred, {'databaseURL': DATABASE_URL})
-        print("Firebase initialized successfully.")
-    except Exception as e:
-        raise RuntimeError(f"Firebase initialization error: {e}")
+    firebase_cred = credentials.Certificate("firebase-adminsdk.json")
+    initialize_app(firebase_cred, {
+        'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+    })
 
-# Google Sheets APIサービス初期化
+
 def get_google_sheets_service():
-    try:
-        google_creds = Credentials.from_service_account_file(GOOGLE_CREDENTIALS_FILE, scopes=SCOPES)
-        return build('sheets', 'v4', credentials=google_creds)
-    except Exception as e:
-        raise RuntimeError(f"Google Sheets API initialization error: {e}")
+    scopes = ['https://www.googleapis.com/auth/spreadsheets']
+    google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
+    return build('sheets', 'v4', credentials=google_creds)
 
-# Firebaseからデータ取得
+
 def get_firebase_data(ref_path):
-    try:
-        return db.reference(ref_path).get()
-    except Exception as e:
-        print(f"Error fetching data from Firebase ({ref_path}): {e}")
-        return None
+    return db.reference(ref_path).get()
 
-# スプレッドシートの既存シートタイトル取得
-def get_existing_sheet_titles(sheets_service, spreadsheet_id):
-    try:
-        response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        return [sheet['properties']['title'] for sheet in response.get('sheets', [])]
-    except Exception as e:
-        print(f"Error fetching existing sheet titles: {e}")
-        return []
 
-# シートタイトルからシートIDを取得
-def get_sheet_id_by_title(sheets_service, spreadsheet_id, title):
-    try:
-        response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        for sheet in response.get('sheets', []):
-            if sheet['properties']['title'] == title:
-                return sheet['properties']['sheetId']
-        print(f"Sheet with title '{title}' not found.")
-        return None
-    except Exception as e:
-        print(f"Error fetching sheet ID for title '{title}': {e}")
-        return None
-
-# シートのグリッドプロパティ取得
-def get_sheet_grid_properties(sheets_service, spreadsheet_id, title):
-    try:
-        response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        for sheet in response.get('sheets', []):
-            if sheet['properties']['title'] == title:
-                return sheet['properties'].get('gridProperties', {})
-        return None
-    except Exception as e:
-        print(f"Error fetching grid properties for sheet '{title}': {e}")
-        return None
-
-# 列が不足している場合に列を追加
-def add_columns_if_needed(sheets_service, spreadsheet_id, sheet_id, required_columns):
-    try:
-        grid_properties = get_sheet_grid_properties(sheets_service, spreadsheet_id, sheet_id)
-        current_columns = grid_properties.get('columnCount', 0)
-        if current_columns < required_columns:
-            requests = [{
-                "updateSheetProperties": {
-                    "properties": {
-                        "sheetId": sheet_id,
-                        "gridProperties": {"columnCount": required_columns}
-                    },
-                    "fields": "gridProperties.columnCount"
-                }
-            }]
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={"requests": requests}
-            ).execute()
-            print(f"Added columns to sheet (Sheet ID: {sheet_id}) to match required columns.")
-    except Exception as e:
-        print(f"Error adding columns to sheet: {e}")
-
-# 月ごとのシートを準備
-def prepare_monthly_sheets(spreadsheet_id, sheets_service):
-    months = [f"{i}月" for i in range(1, 13)]
-    existing_titles = set(get_existing_sheet_titles(sheets_service, spreadsheet_id))
-
-    requests = [
-        {"addSheet": {"properties": {"title": month}}}
-        for month in months if month not in existing_titles
-    ]
-
-    if requests:
-        try:
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={"requests": requests}
-            ).execute()
-            print("Monthly sheets created successfully.")
-        except Exception as e:
-            print(f"Error creating monthly sheets: {e}")
-    else:
-        print("All monthly sheets already exist.")
-
-# セル更新リクエスト作成
 def create_cell_update_request(sheet_id, row_index, column_index, value):
     return {
         "updateCells": {
@@ -125,82 +30,126 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
         }
     }
 
-# Google Sheetsの更新リクエスト準備
-def prepare_update_requests(sheets_service, spreadsheet_id, sheet_id, class_names, month_index, year=2025):
+
+def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+    return {
+        "updateDimensionProperties": {
+            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
+            "properties": {"pixelSize": pixel_size},
+            "fields": "pixelSize"
+        }
+    }
+
+
+def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
+    return {
+        "addConditionalFormatRule": {
+            "rule": {
+                "ranges": [{"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                            "startColumnIndex": start_col, "endColumnIndex": end_col}],
+                "booleanRule": {
+                    "condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": formula}]},
+                    "format": {"backgroundColor": color}
+                }
+            },
+            "index": 0
+        }
+    }
+
+
+def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
+    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
+    return {
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                      "startColumnIndex": start_col, "endColumnIndex": end_col},
+            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
+            "fields": "userEnteredFormat.backgroundColor"
+        }
+    }
+
+
+def prepare_update_requests(sheet_id, class_names):
     if not class_names:
-        print("Class names list is empty.")
+        print("Class names list is empty. Check data retrieved from Firebase.")
         return []
 
-    requests = [create_cell_update_request(sheet_id, 0, 0, "教科")]
-    requests.extend(
-        create_cell_update_request(sheet_id, i + 1, 0, name) for i, name in enumerate(class_names)
-    )
+    requests = [
+        {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
+        create_dimension_request(0, "COLUMNS", 0, 1, 100),
+        create_dimension_request(0, "COLUMNS", 1, 32, 35),
+        create_dimension_request(0, "ROWS", 0, 1, 120),
+        {"repeatCell": {"range": {"sheetId": 0},
+                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+                        "fields": "userEnteredFormat.horizontalAlignment"}},
+        {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
+                                     "endColumnIndex": 32},
+                           "top": {"style": "SOLID", "width": 1},
+                           "bottom": {"style": "SOLID", "width": 1},
+                           "left": {"style": "SOLID", "width": 1},
+                           "right": {"style": "SOLID", "width": 1}}},
+        {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
+                                                 "startColumnIndex": 0, "endColumnIndex": 32}}}}
+    ]
 
-    # Calculate days in the month
-    days_in_month = calendar.monthrange(year, month_index + 1)[1]
-    start_date = datetime(year, month_index + 1, 1)
+    requests.append(create_cell_update_request(0, 0, 0, "教科"))
+    requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(class_names))
 
-    required_columns = days_in_month + 1  # Days in month + 1 for the "教科" column
-    add_columns_if_needed(sheets_service, spreadsheet_id, sheet_id, required_columns)
+    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    start_date = datetime(2025, 1, 1)
+    end_row = 25
 
-    for i in range(days_in_month):
+    for i in range(31):
         date = start_date + timedelta(days=i)
-        date_string = f"{date.strftime('%m/%d')} ({JAPANESE_WEEKDAYS[date.weekday()]})"
-        requests.append(create_cell_update_request(sheet_id, 0, i + 1, date_string))
+        if date.month != 12:
+            break
+        weekday = date.weekday()
+        date_string = f"{date.strftime('%m')}\n月\n{date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
+        requests.append(create_cell_update_request(0, 0, i + 1, date_string))
+
+        if weekday in (5, 6):
+            color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
+            requests.append(create_conditional_formatting_request(
+                0, 0, end_row, i + 1, i + 2, color,
+                f'=ISNUMBER(SEARCH("{japanese_weekdays[weekday]}", INDIRECT(ADDRESS(1, COLUMN()))))'
+            ))
+
+    requests.append(create_black_background_request(0, 25, 1000, 0, 1000))
+    requests.append(create_black_background_request(0, 0, 1000, 32, 1000))
 
     return requests
 
-# メイン処理
+
 def main():
-    try:
-        initialize_firebase()
-        sheets_service = get_google_sheets_service()
+    initialize_firebase()
+    sheets_service = get_google_sheets_service()
 
-        # Firebaseから必要なデータを取得
-        spreadsheet_id = get_firebase_data('Students/student_info/student_index/E534/sheet_id')
-        student_course_id = get_firebase_data('Students/enrollment/student_index/E534/course_id')
-        courses = get_firebase_data('Courses/course_id')
+    sheet_id = get_firebase_data('Students/student_info/student_index/{student_indeex}/sheet_id')
+    student_course_ids = get_firebase_data('Students/enrollment/student_index/{student_indeex}/course_id')
+    courses = get_firebase_data('Courses/course_id')
 
-        if not spreadsheet_id or not student_course_id or not courses:
-            raise ValueError("Required data not found in Firebase.")
+    if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
+        print("Invalid data retrieved from Firebase.")
+        return
 
-        # コース辞書作成
-        courses_dict = {str(i): course for i, course in enumerate(courses) if course}
+    courses_dict = {i: course for i, course in enumerate(courses) if course}
 
-        # クラス名を取得
-        class_names = [
-            courses_dict[student_course_id]['class_name']
-        ] if student_course_id in courses_dict else []
+    class_names = [
+        courses_dict[cid]['class_name'] for cid in student_course_ids
+        if cid in courses_dict and 'class_name' in courses_dict[cid]
+    ]
 
-        prepare_monthly_sheets(spreadsheet_id, sheets_service)
+    requests = prepare_update_requests(sheet_id, class_names)
+    if not requests:
+        print("No requests to update the sheet.")
+        return
 
-        # 各月のシートを更新
-        for month_index in range(12):  # 1月～12月
-            title = f"{month_index + 1}月"
-            sheet_id = get_sheet_id_by_title(sheets_service, spreadsheet_id, title)
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=sheet_id,
+        body={'requests': requests}
+    ).execute()
+    print("Sheet updated successfully.")
 
-            if not sheet_id:
-                print(f"Sheet ID for {title} not found. Skipping update.")
-                continue
-
-            requests = prepare_update_requests(
-                sheets_service, spreadsheet_id, sheet_id, class_names, month_index
-            )
-            if not requests:
-                print(f"No update requests for {title}.")
-                continue
-
-            try:
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=spreadsheet_id,
-                    body={'requests': requests}
-                ).execute()
-                print(f"{title} sheet updated successfully.")
-            except Exception as e:
-                print(f"Error updating sheet for {title}: {e}")
-
-    except Exception as e:
-        print(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
     main()
