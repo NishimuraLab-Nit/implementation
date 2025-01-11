@@ -129,6 +129,7 @@ def prepare_monthly_update_requests(sheet_ids, class_names):
     """
     requests = []
     start_date = datetime(2025, 1, 1)
+    max_columns = 26  # Limit to avoid exceeding available columns
 
     for month, sheet_title in enumerate(sheet_ids.keys(), start=1):
         sheet_id = sheet_ids[sheet_title]
@@ -141,7 +142,7 @@ def prepare_monthly_update_requests(sheet_ids, class_names):
             requests.append(create_cell_update_request(sheet_id, i + 1, 0, class_name))
 
         # Add date headers for the current month
-        for day in range(1, 32):
+        for day in range(1, min(32, max_columns)):
             try:
                 current_date = datetime(2025, month, day)
                 weekday = current_date.weekday()
