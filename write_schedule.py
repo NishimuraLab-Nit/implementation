@@ -1,8 +1,8 @@
 from datetime import datetime, timedelta
-
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 # 定数
 FIREBASE_CREDENTIALS_FILE = "firebase-adminsdk.json"
@@ -51,6 +51,7 @@ def get_sheet_id_by_title(sheets_service, spreadsheet_id, title):
         response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
         for sheet in response.get('sheets', []):
             if sheet['properties']['title'] == title:
+                print(f"Found sheet ID: {sheet['properties']['sheetId']} for title: {title}")
                 return sheet['properties']['sheetId']
         print(f"Sheet with title '{title}' not found.")
         return None
@@ -80,36 +81,44 @@ def prepare_monthly_sheets(spreadsheet_id, sheets_service):
     else:
         print("All monthly sheets already exist.")
 
-# セル更新リクエスト作成
-def create_cell_update_request(sheet_id, row_index, column_index, value):
-    return {
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
-            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
-            "fields": "userEnteredValue"
-        }
-    }
+# Google Sheetsの更新リクエストを送信
+def update_sheet_with_requests(sheets_service, spreadsheet_id, sheet_title, updates):
+    try:
+        sheets_service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f"'{sheet_title}'!A1",
+            valueInputOption="RAW",
+            body={"values": updates}
+        ).execute()
+        print(f"Sheet '{sheet_title}' updated successfully.")
+    except HttpError as e:
+        print(f"HttpError occurred while updating sheet '{sheet_title}': {e.content}")
+    except Exception as e:
+        print(f"Error updating sheet '{sheet_title}': {e}")
 
-# Google Sheetsの更新リクエスト準備
-def prepare_update_requests(sheet_id, class_names, month_index):
+# シート更新内容を準備
+def prepare_update_requests(class_names, month_index):
     if not class_names:
         print("Class names list is empty.")
         return []
 
-    requests = [create_cell_update_request(sheet_id, 0, 0, "教科")]
-    requests.extend(
-        create_cell_update_request(sheet_id, i + 1, 0, name) for i, name in enumerate(class_names)
-    )
+    updates = [["教科"] + [f"Day {i + 1}" for i in range(31)]]  # ヘッダー
 
     start_date = datetime(2025, month_index + 1, 1)
+    dates_row = []
     for i in range(31):  # 最大31日分
         date = start_date + timedelta(days=i)
         if date.month != month_index + 1:
             break
         date_string = f"{date.strftime('%m/%d')} ({JAPANESE_WEEKDAYS[date.weekday()]})"
-        requests.append(create_cell_update_request(sheet_id, 0, i + 1, date_string))
+        dates_row.append(date_string)
 
-    return requests
+    # 更新内容
+    updates.append([""] + dates_row)  # 空セル + 日付
+    for name in class_names:
+        updates.append([name] + [""] * 31)
+
+    return updates
 
 # メイン処理
 def main():
@@ -125,7 +134,7 @@ def main():
         prepare_monthly_sheets(spreadsheet_id, sheets_service)
 
         # クラス名（仮設定）
-        class_names = ["数学"]
+        class_names = ["数学", "英語", "物理"]
 
         # 各月のシートを更新
         for month_index in range(12):  # 1月～12月
@@ -136,19 +145,12 @@ def main():
                 print(f"Sheet ID for {title} not found. Skipping update.")
                 continue
 
-            requests = prepare_update_requests(sheet_id, class_names, month_index)
-            if not requests:
-                print(f"No update requests for {title}.")
+            updates = prepare_update_requests(class_names, month_index)
+            if not updates:
+                print(f"No updates prepared for {title}.")
                 continue
 
-            try:
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=spreadsheet_id,
-                    body={'requests': requests}
-                ).execute()
-                print(f"{title} sheet updated successfully.")
-            except Exception as e:
-                print(f"Error updating sheet for {title}: {e}")
+            update_sheet_with_requests(sheets_service, spreadsheet_id, title, updates)
 
     except Exception as e:
         print(f"Unexpected error: {e}")
