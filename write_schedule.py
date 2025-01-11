@@ -46,7 +46,9 @@ def validate_firebase_data(sheet_id, student_course_ids, courses):
 
     # course_idをリスト形式に変換
     if isinstance(student_course_ids, int):
-        student_course_ids = [str(student_course_ids)]
+        student_course_ids = [str(student_course_ids)]  # 整数をリストに変換
+    elif isinstance(student_course_ids, str):
+        student_course_ids = [student_course_ids]  # 文字列の場合もリストに変換
     elif not isinstance(student_course_ids, list) or not student_course_ids:
         raise ValueError("学生のコースIDリストが無効、または存在しません。")
 
