@@ -79,34 +79,45 @@ def prepare_update_requests(sheet_id, class_names):
 # ======== メイン関数 ========
 def main():
     try:
-        # FirebaseとGoogle Sheetsの初期化
+        # Firebase初期化
         initialize_firebase()
-        sheets_service = get_google_sheets_service()
 
-        # Firebaseから必要なデータを取得
-        sheet_id = get_firebase_data('Students/student_info/student_index/{student_indeex}/sheet_id')
-        student_course_ids = get_firebase_data('Students/enrollment/student_index/{student_indeex}/course_id')
-        courses = get_firebase_data('Courses/course_id')
-
-        # データ検証
-        if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
-            print("Invalid data retrieved from Firebase.")
+        # データ取得
+        student_index = "E534"  # 必要に応じて動的に設定
+        sheet_id = get_firebase_data(f'Students/student_info/student_index/{student_index}/sheet_id')
+        if not sheet_id:
+            print(f"Error: Sheet ID not found for student_index '{student_index}'")
             return
 
-        # クラス名の抽出
+        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
+        if not isinstance(student_course_ids, list):
+            print(f"Error: Invalid course ID data for student_index '{student_index}'")
+            return
+
+        courses = get_firebase_data('Courses/course_id')
+        if not isinstance(courses, list):
+            print("Error: Invalid courses data from Firebase")
+            return
+
+        # データをログ出力
+        print(f"sheet_id: {sheet_id}")
+        print(f"student_course_ids: {student_course_ids}")
+        print(f"courses: {courses}")
+
+        # クラス名を抽出
         courses_dict = {i: course for i, course in enumerate(courses) if course}
         class_names = [
             courses_dict[cid]['class_name'] for cid in student_course_ids
             if cid in courses_dict and 'class_name' in courses_dict[cid]
         ]
 
-        # Google Sheetsの更新リクエストを準備
+        # 更新リクエストの準備と実行
         requests = prepare_update_requests(sheet_id, class_names)
         if not requests:
             print("No requests to update the sheet.")
             return
 
-        # Google Sheets APIで更新
+        sheets_service = get_google_sheets_service()
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=sheet_id,
             body={'requests': requests}
@@ -115,6 +126,7 @@ def main():
 
     except Exception as e:
         print(f"An error occurred: {e}")
+
 
 
 if __name__ == "__main__":
