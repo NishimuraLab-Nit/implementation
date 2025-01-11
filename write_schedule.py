@@ -131,6 +131,15 @@ def prepare_update_requests(sheet_ids, class_names):
         for i, class_name in enumerate(class_names):
             requests.append(create_cell_update(sheet_id, i + 1, 0, class_name))
 
+        # Ensure the sheet has at least 32 columns (1 for class names, 31 for days)
+        requests.append({
+            "appendDimension": {
+                "sheetId": sheet_id,
+                "dimension": "COLUMNS",
+                "length": 32  # Extend to 32 columns if not already present
+            }
+        })
+
         # Add date headers with weekday labels
         for day in range(1, 32):  # Limit to 31 days
             try:
@@ -152,6 +161,7 @@ def prepare_update_requests(sheet_ids, class_names):
                 break  # Skip invalid dates beyond the month's end
 
     return requests
+
 
 def main():
     """
