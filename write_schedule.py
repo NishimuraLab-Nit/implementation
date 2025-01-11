@@ -174,7 +174,7 @@ def prepare_monthly_update_requests(sheet_ids, class_names):
             try:
                 current_date = datetime(2025, month, day)
                 weekday = current_date.weekday()
-                date_string = f"{current_date.day}\n{['月', '火', '水', '木', '金', '土', '日'][weekday]}"
+                date_string = f"{date.strftime('%m')}\n月\n{date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
                 requests.append(create_cell_update_request(sheet_id, 0, day, date_string))
 
                 if weekday in (5, 6):  # Saturday or Sunday
