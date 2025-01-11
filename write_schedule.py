@@ -5,61 +5,23 @@ from googleapiclient.discovery import build
 from datetime import datetime
 
 def initialize_firebase():
-    """
-    Initialize Firebase app using credentials from an environment variable.
-    """
-    try:
-        firebase_cred_path = os.getenv('FIREBASE_CREDENTIALS_PATH', 'firebase-adminsdk.json')
-        firebase_cred = credentials.Certificate(firebase_cred_path)
-        initialize_app(firebase_cred, {
-            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-        })
-    except Exception as e:
-        print(f"Error initializing Firebase: {e}")
-        raise
+    firebase_cred = credentials.Certificate("firebase-adminsdk.json")
+    initialize_app(firebase_cred, {
+        'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+    })
+
 
 def get_google_sheets_service():
-    """
-    Initialize and return the Google Sheets API service.
-    """
-    try:
-        scopes = ['https://www.googleapis.com/auth/spreadsheets']
-        google_cred_path = os.getenv('GOOGLE_CREDENTIALS_PATH', 'google-credentials.json')
-        google_creds = Credentials.from_service_account_file(google_cred_path, scopes=scopes)
-        return build('sheets', 'v4', credentials=google_creds)
-    except Exception as e:
-        print(f"Error initializing Google Sheets service: {e}")
-        raise
+    scopes = ['https://www.googleapis.com/auth/spreadsheets']
+    google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
+    return build('sheets', 'v4', credentials=google_creds)
 
-def get_firebase_data(reference_path):
-    """
-    Retrieve data from Firebase at the specified reference path.
-    """
-    try:
-        data = db.reference(reference_path).get()
-        if data is None:
-            print(f"No data found at path: {reference_path}")
-        return data
-    except Exception as e:
-        print(f"Error retrieving data from Firebase at path {reference_path}: {e}")
-        raise
 
-def create_dimension_update(sheet_id, dimension, start_index, end_index, pixel_size):
-    """
-    Create a request to update dimensions (rows/columns) in a Google Sheet.
-    """
-    return {
-        "updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
-            "properties": {"pixelSize": pixel_size},
-            "fields": "pixelSize"
-        }
-    }
+def get_firebase_data(ref_path):
+    return db.reference(ref_path).get()
 
-def create_cell_update(sheet_id, row_index, column_index, value):
-    """
-    Create a request to update a specific cell in a Google Sheet.
-    """
+
+def create_cell_update_request(sheet_id, row_index, column_index, value):
     return {
         "updateCells": {
             "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
@@ -68,10 +30,18 @@ def create_cell_update(sheet_id, row_index, column_index, value):
         }
     }
 
-def create_conditional_format(sheet_id, start_row, end_row, start_col, end_col, color, formula):
-    """
-    Create a request to apply conditional formatting to a range in a Google Sheet.
-    """
+
+def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+    return {
+        "updateDimensionProperties": {
+            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
+            "properties": {"pixelSize": pixel_size},
+            "fields": "pixelSize"
+        }
+    }
+
+
+def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
     return {
         "addConditionalFormatRule": {
             "rule": {
@@ -86,40 +56,41 @@ def create_conditional_format(sheet_id, start_row, end_row, start_col, end_col, 
         }
     }
 
-def create_monthly_sheets(sheets_service, spreadsheet_id):
-    """
-    Create sheets for each month if they do not already exist, and return their IDs.
-    """
-    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    existing_sheets = {sheet['properties']['title']: sheet['properties']['sheetId'] 
-                       for sheet in spreadsheet.get('sheets', [])}
-    
-    sheet_ids = {}
 
-    for month in range(1, 13):
-        sheet_title = f"{month}月"
-        if sheet_title in existing_sheets:
-            print(f"Sheet '{sheet_title}' already exists.")
-            sheet_ids[sheet_title] = existing_sheets[sheet_title]
-        else:
-            requests = [{"addSheet": {"properties": {"title": sheet_title}}}]
-            response = sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={"requests": requests}
-            ).execute()
-            sheet_id = response['replies'][0]['addSheet']['properties']['sheetId']
-            sheet_ids[sheet_title] = sheet_id
-            print(f"Sheet '{sheet_title}' created with ID: {sheet_id}")
+def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
+    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
+    return {
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                      "startColumnIndex": start_col, "endColumnIndex": end_col},
+            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
+            "fields": "userEnteredFormat.backgroundColor"
+        }
+    }
 
-    return sheet_ids
 
-def prepare_update_requests(sheet_ids, class_names):
-    """
-    Prepare requests to format and update each monthly sheet with headers and class names.
-    """
-    weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    requests = []
+def prepare_update_requests(sheet_id, class_names):
+    if not class_names:
+        print("Class names list is empty. Check data retrieved from Firebase.")
+        return []
 
+    requests = [
+        {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
+        create_dimension_request(0, "COLUMNS", 0, 1, 100),
+        create_dimension_request(0, "COLUMNS", 1, 32, 35),
+        create_dimension_request(0, "ROWS", 0, 1, 120),
+        {"repeatCell": {"range": {"sheetId": 0},
+                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+                        "fields": "userEnteredFormat.horizontalAlignment"}},
+        {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
+                                     "endColumnIndex": 32},
+                           "top": {"style": "SOLID", "width": 1},
+                           "bottom": {"style": "SOLID", "width": 1},
+                           "left": {"style": "SOLID", "width": 1},
+                           "right": {"style": "SOLID", "width": 1}}},
+        {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
+                                                 "startColumnIndex": 0, "endColumnIndex": 32}}}}
+    ]
     for month, sheet_title in enumerate(sheet_ids.keys(), start=1):
         sheet_id = sheet_ids[sheet_title]
 
