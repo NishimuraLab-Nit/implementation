@@ -57,6 +57,30 @@ def get_sheet_id_by_title(sheets_service, spreadsheet_id, title):
         print(f"Error fetching sheet ID for title '{title}': {e}")
         return None
 
+# 必要な列を追加するリクエスト
+def ensure_column_count(sheets_service, spreadsheet_id, sheet_id, required_columns):
+    """必要な列数を確保するために列を追加する"""
+    try:
+        response = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheet = next((s for s in response['sheets'] if s['properties']['sheetId'] == sheet_id), None)
+        current_columns = sheet['properties']['gridProperties']['columnCount']
+        
+        if current_columns < required_columns:
+            add_columns_request = {
+                "appendDimension": {
+                    "sheetId": sheet_id,
+                    "dimension": "COLUMNS",
+                    "length": required_columns - current_columns
+                }
+            }
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": [add_columns_request]}
+            ).execute()
+            print(f"Added {required_columns - current_columns} columns to sheet {sheet_id}.")
+    except Exception as e:
+        print(f"Error ensuring column count for sheet {sheet_id}: {e}")
+
 # 月ごとのシートを準備
 def prepare_monthly_sheets(spreadsheet_id, sheets_service):
     months = [f"{i}月" for i in range(1, 13)]
@@ -123,17 +147,18 @@ def main():
 
         prepare_monthly_sheets(spreadsheet_id, sheets_service)
 
-        # クラス名（仮設定）
-        class_names = ["数学"]
+        class_names = ["数学"]  # 仮設定のクラス名
 
-        # 各月のシートを更新
-        for month_index in range(12):  # 1月～12月
+        for month_index in range(12):
             title = f"{month_index + 1}月"
             sheet_id = get_sheet_id_by_title(sheets_service, spreadsheet_id, title)
 
             if not sheet_id:
                 print(f"Sheet ID for {title} not found. Skipping update.")
                 continue
+
+            required_columns = 32  # 最大の日数分の列が必要
+            ensure_column_count(sheets_service, spreadsheet_id, sheet_id, required_columns)
 
             requests = prepare_update_requests(sheet_id, class_names, month_index)
             if not requests:
