@@ -123,11 +123,39 @@ def create_monthly_sheets(sheets_service, spreadsheet_id):
 
     return sheet_ids
 
+def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
+    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
+    return {
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                      "startColumnIndex": start_col, "endColumnIndex": end_col},
+            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
+            "fields": "userEnteredFormat.backgroundColor"
+        }
+    }
+    
 def prepare_monthly_update_requests(sheet_ids, class_names):
     """
     Prepare update requests for each month sheet.
     """
-    requests = []
+    requests = [
+        {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
+        create_dimension_request(0, "COLUMNS", 0, 1, 100),
+        create_dimension_request(0, "COLUMNS", 1, 32, 35),
+        create_dimension_request(0, "ROWS", 0, 1, 120),
+        {"repeatCell": {"range": {"sheetId": 0},
+                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+                        "fields": "userEnteredFormat.horizontalAlignment"}},
+        {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
+                                     "endColumnIndex": 32},
+                           "top": {"style": "SOLID", "width": 1},
+                           "bottom": {"style": "SOLID", "width": 1},
+                           "left": {"style": "SOLID", "width": 1},
+                           "right": {"style": "SOLID", "width": 1}}},
+        {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
+                                                 "startColumnIndex": 0, "endColumnIndex": 32}}}}
+    ]
+
     start_date = datetime(2025, 1, 1)
     max_columns = 26  # Limit to avoid exceeding available columns
 
