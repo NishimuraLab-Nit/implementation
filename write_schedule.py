@@ -38,24 +38,21 @@ def get_firebase_data(ref_path):
 def validate_firebase_data(sheet_id, student_course_ids, courses):
     """Firebaseデータの検証と整形"""
     if not isinstance(sheet_id, str) or not sheet_id.strip():
-        raise ValueError("Sheet ID is invalid or missing.")
+        raise ValueError("Invalid or missing sheet ID.")
 
-    # Ensure student_course_ids is a list of strings
     if isinstance(student_course_ids, int):
         student_course_ids = [str(student_course_ids)]
     elif isinstance(student_course_ids, str):
         student_course_ids = [student_course_ids]
     elif not isinstance(student_course_ids, list) or not student_course_ids:
-        raise ValueError("Student course IDs are invalid or missing.")
+        raise ValueError("Invalid or missing student course IDs.")
 
-    # Filter valid courses
-    valid_courses = [
-        course for course in courses
-        if isinstance(course, dict) and 'class_name' in course
-    ]
+    if not isinstance(courses, list):
+        raise ValueError("Courses data is not in list format.")
 
+    valid_courses = {str(i): course for i, course in enumerate(courses) if course and 'class_name' in course}
     if not valid_courses:
-        raise ValueError(f"Courses data is invalid: {courses}")
+        raise ValueError("Invalid or incomplete courses data.")
 
     return student_course_ids, valid_courses
 
@@ -67,7 +64,7 @@ def get_existing_sheet_titles(sheets_service, sheet_id):
         titles = [sheet['properties']['title'] for sheet in sheets]
         return titles
     except Exception as e:
-        print(f"Error fetching sheet titles: {e}")
+        print(f"Error fetching existing sheet titles: {e}")
         return []
 
 def prepare_monthly_sheets(sheet_id, sheets_service):
@@ -138,10 +135,7 @@ def main():
         courses = get_firebase_data('Courses/course_id')
 
         # データの検証と整形
-        student_course_ids, courses = validate_firebase_data(sheet_id, student_course_ids, courses)
-
-        # コース情報を辞書化
-        courses_dict = {str(i): course for i, course in enumerate(courses) if course}
+        student_course_ids, courses_dict = validate_firebase_data(sheet_id, student_course_ids, courses)
 
         # クラス名リストを作成
         class_names = [
@@ -168,7 +162,7 @@ def main():
                     spreadsheetId=sheet_id,
                     body={'requests': requests}
                 ).execute()
-                print(f"Sheet for {month_index + 1}月 updated successfully.")
+                print(f"{month_index + 1}月のシートが正常に更新されました。")
             except Exception as e:
                 print(f"Error updating sheet for {month_index + 1}月: {e}")
 
