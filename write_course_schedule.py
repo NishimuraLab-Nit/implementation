@@ -21,31 +21,31 @@ def get_firebase_data(ref_path):
     return db.reference(ref_path).get()
 
 # セル更新リクエストを作成
-def create_cell_update_request(sheet_id, row_index, column_index, value):
+def create_cell_update_request(course_sheet_id, row_index, column_index, value):
     return {
         "updateCells": {
             "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
-            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
+            "start": {"sheetId": course_sheet_id, "rowIndex": row_index, "columnIndex": column_index},
             "fields": "userEnteredValue"
         }
     }
 
 # 列や行のプロパティ設定リクエストを作成
-def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+def create_dimension_request(course_sheet_id, dimension, start_index, end_index, pixel_size):
     return {
         "updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
+            "range": {"sheetId": course_sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
             "properties": {"pixelSize": pixel_size},
             "fields": "pixelSize"
         }
     }
 
 # 黒背景リクエストを作成
-def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
+def create_black_background_request(course_sheet_id, start_row, end_row, start_col, end_col):
     black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
     return {
         "repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+            "range": {"sheetId": course_sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
                       "startColumnIndex": start_col, "endColumnIndex": end_col},
             "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
             "fields": "userEnteredFormat.backgroundColor"
@@ -84,7 +84,7 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
     return f"{base_title}-{index}"
 
 # シート更新リクエストを準備
-def prepare_update_requests(sheet_id, student_name, month, sheets_service, spreadsheet_id, year=2025):
+def prepare_update_requests(course_sheet_id, student_name, month, sheets_service, spreadsheet_id, year=2025):
     if not student_name:
         print("学生名が空です。Firebaseから取得したデータを確認してください。")
         return []
@@ -198,8 +198,8 @@ def main():
 
         for course_id in student_course_ids:
             # 各コースIDからシートIDを取得
-            sheet_id = get_firebase_data(f'Courses/course_id/{course_id}/sheet_id')
-            if not sheet_id:
+            sheet_id = get_firebase_data(f'Courses/course_id/{course_id}/course_sheet_id')
+            if not course_sheet_id:
                 print(f"コースID {course_id} に関連付けられたシートIDが見つかりませんでした。")
                 continue
 
