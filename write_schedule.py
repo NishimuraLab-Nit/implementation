@@ -77,6 +77,7 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
 
 
 # シート更新リクエストを準備
+# 修正部分：土曜日と日曜日の列に対する色付けを直接行う
 def prepare_update_requests(sheet_id, course_names, month):
     if not course_names:
         print("コース名リストが空です。Firebaseから取得したデータを確認してください。")
@@ -105,7 +106,7 @@ def prepare_update_requests(sheet_id, course_names, month):
     for i, name in enumerate(course_names):
         requests.append(create_cell_update_request(0, i + 1, 0, name))
 
-    # 日付と条件付きフォーマット
+    # 日付と土日セルの色付け
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(2025, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
@@ -117,18 +118,26 @@ def prepare_update_requests(sheet_id, course_names, month):
         date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
         requests.append(create_cell_update_request(0, 0, current_date.day, date_string))
 
-        # 土曜日と日曜日の条件付きフォーマット
+        # 土曜日と日曜日のセルに直接色を設定
         if weekday in (5, 6):
             color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
-            requests.append(create_conditional_formatting_request(
-                0, 0, end_row, current_date.day, current_date.day + 1, color,
-                f'=ISNUMBER(SEARCH("⌢/n{japanese_weekdays[weekday]}/n⌣", INDIRECT(ADDRESS(1, COLUMN()))))'
-            ))
-        
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": 0, 
+                        "startRowIndex": 0, 
+                        "endRowIndex": end_row, 
+                        "startColumnIndex": current_date.day, 
+                        "endColumnIndex": current_date.day + 1
+                    },
+                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                    "fields": "userEnteredFormat.backgroundColor"
+                }
+            })
 
         current_date += timedelta(days=1)
 
-    # 黒背景を設定
+    # 残りのシートの背景色を黒に設定
     requests.append(create_black_background_request(0, 25, 1000, 0, 1000))
     requests.append(create_black_background_request(0, 0, 1000, 32, 1000))
 
