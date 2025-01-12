@@ -1,3 +1,30 @@
+import firebase_admin
+from firebase_admin import credentials, db
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+# Firebase アプリを初期化（未初期化の場合）
+if not firebase_admin._apps:
+    cred = credentials.Certificate('/tmp/firebase_service_account.json')
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+    })
+
+# Google Sheets と Drive API のスコープを定義
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+SERVICE_ACCOUNT_FILE = '/tmp/gcp_service_account.json'
+
+# サービスアカウントファイルから資格情報を取得
+creds = service_account.Credentials.from_service_account_file(
+    SERVICE_ACCOUNT_FILE, scopes=SCOPES
+)
+
+# Google Sheets と Drive のサービスクライアントを作成
+sheets_service = build('sheets', 'v4', credentials=creds)
+drive_service = build('drive', 'v3', credentials=creds)
+
+
 def create_spreadsheets_for_all_students():
     try:
         # Firebase データベースから全ての学生番号を取得
@@ -57,6 +84,11 @@ def create_spreadsheets_for_all_students():
         print(f'API error occurred: {error}')
     except ValueError as e:
         print(e)
+
+
+# 実行
+create_spreadsheets_for_all_students()
+
 
 
 # 実行
