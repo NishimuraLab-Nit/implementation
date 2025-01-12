@@ -3,7 +3,6 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
 
-
 # Firebaseの初期化
 def initialize_firebase():
     firebase_cred = credentials.Certificate("firebase-adminsdk.json")
@@ -11,18 +10,15 @@ def initialize_firebase():
         'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
     })
 
-
 # Google Sheets APIサービスの初期化
 def get_google_sheets_service():
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
     return build('sheets', 'v4', credentials=google_creds)
 
-
 # Firebaseからデータを取得
 def get_firebase_data(ref_path):
     return db.reference(ref_path).get()
-
 
 # セル更新リクエストを作成
 def create_cell_update_request(sheet_id, row_index, column_index, value):
@@ -34,7 +30,6 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
         }
     }
 
-
 # 列や行のプロパティ設定リクエストを作成
 def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
     return {
@@ -44,24 +39,6 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
             "fields": "pixelSize"
         }
     }
-
-
-# 条件付きフォーマットリクエストを作成
-def create_conditional_formatting_request(sheet_id, start_row, end_row, start_col, end_col, color, formula):
-    return {
-        "addConditionalFormatRule": {
-            "rule": {
-                "ranges": [{"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
-                            "startColumnIndex": start_col, "endColumnIndex": end_col}],
-                "booleanRule": {
-                    "condition": {"type": "CUSTOM_FORMULA", "values": [{"userEnteredValue": formula}]},
-                    "format": {"backgroundColor": color}
-                }
-            },
-            "index": 0
-        }
-    }
-
 
 # 黒背景リクエストを作成
 def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
@@ -75,15 +52,33 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
         }
     }
 
+# 新しいシート作成リクエストを作成する関数
+def create_sheet_request(sheet_title):
+    return {
+        "addSheet": {
+            "properties": {
+                "title": sheet_title,
+                "gridProperties": {
+                    "rowCount": 1000,
+                    "columnCount": 32
+                }
+            }
+        }
+    }
 
 # シート更新リクエストを準備
-# 修正部分：土曜日と日曜日の列に対する色付けを直接行う
-def prepare_update_requests(sheet_id, course_names, month):
+def prepare_update_requests(sheet_id, course_names, month, year=2025):
     if not course_names:
         print("コース名リストが空です。Firebaseから取得したデータを確認してください。")
         return []
 
-    requests = [
+    # 月に対応するシート名を作成
+    sheet_title = f"{year}-{str(month).zfill(2)}"
+
+    # シートを追加するリクエスト
+    requests = [create_sheet_request(sheet_title)]
+
+    requests += [
         {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
         create_dimension_request(0, "COLUMNS", 0, 1, 100),
         create_dimension_request(0, "COLUMNS", 1, 32, 35),
@@ -108,7 +103,7 @@ def prepare_update_requests(sheet_id, course_names, month):
 
     # 日付と土日セルの色付け
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(2025, month, 1)
+    start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     end_row = 25
 
@@ -142,7 +137,6 @@ def prepare_update_requests(sheet_id, course_names, month):
     requests.append(create_black_background_request(0, 0, 1000, 32, 1000))
 
     return requests
-
 
 def main():
     initialize_firebase()
@@ -196,7 +190,6 @@ def main():
                 body={'requests': requests}
             ).execute()
             print(f"月 {month} のシートを正常に更新しました。")
-
 
 if __name__ == "__main__":
     main()
