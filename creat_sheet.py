@@ -36,7 +36,7 @@ def create_spreadsheets_for_all_students():
         if all_students is None:
             raise ValueError("No student data found in Firebase.")
 
-        for student_number in all_students.keys():
+        for student_number in all_students.str():
             # 学生データを取得
             student_data = all_students[student_index]
 
