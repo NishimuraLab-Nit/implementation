@@ -77,7 +77,7 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
 
 
 # シート更新リクエストを準備
-def prepare_update_requests(sheet_id, course_names):
+def prepare_update_requests(sheet_id, course_names, month):
     if not course_names:
         print("コース名リストが空です。Firebaseから取得したデータを確認してください。")
         return []
@@ -91,13 +91,13 @@ def prepare_update_requests(sheet_id, course_names):
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
                         "fields": "userEnteredFormat.horizontalAlignment"}},
         {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
-                                     "endColumnIndex": 32},
+                                         "endColumnIndex": 32},
                            "top": {"style": "SOLID", "width": 1},
                            "bottom": {"style": "SOLID", "width": 1},
                            "left": {"style": "SOLID", "width": 1},
                            "right": {"style": "SOLID", "width": 1}}},
         {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
-                                                 "startColumnIndex": 0, "endColumnIndex": 32}}}}
+                                                     "startColumnIndex": 0, "endColumnIndex": 32}}}}
     ]
 
     # 教科名を設定
@@ -107,24 +107,25 @@ def prepare_update_requests(sheet_id, course_names):
 
     # 日付と条件付きフォーマット
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(2025, 1, 1)
+    start_date = datetime(2025, month, 1)
+    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     end_row = 25
 
-    for i in range(31):
-        date = start_date + timedelta(days=i)
-        if date.month != 1:
-            break
-        weekday = date.weekday()
-        date_string = f"{date.strftime('%m')}\n月\n{date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
-        requests.append(create_cell_update_request(0, 0, i + 1, date_string))
+    current_date = start_date
+    while current_date <= end_date:
+        weekday = current_date.weekday()
+        date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
+        requests.append(create_cell_update_request(0, 0, current_date.day, date_string))
 
         # 土曜日と日曜日の条件付きフォーマット
         if weekday in (5, 6):
             color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
             requests.append(create_conditional_formatting_request(
-                0, 0, end_row, i + 1, i + 2, color,
+                0, 0, end_row, current_date.day, current_date.day + 1, color,
                 f'=ISNUMBER(SEARCH("{japanese_weekdays[weekday]}", INDIRECT(ADDRESS(1, COLUMN()))))'
             ))
+
+        current_date += timedelta(days=1)
 
     # 黒背景を設定
     requests.append(create_black_background_request(0, 25, 1000, 0, 1000))
@@ -138,50 +139,53 @@ def main():
     sheets_service = get_google_sheets_service()
 
     # Firebaseからデータを取得
-    sheet_id = get_firebase_data('Students/student_info/student_index/E534/sheet_id')
-    student_course_ids = get_firebase_data('Students/enrollment/student_index/E534/course_id')
-    courses = get_firebase_data('Courses/course_id')
-
-    # データの確認
-    print("Sheet ID:", sheet_id)
-    print("Student Course IDs:", student_course_ids)
-    print("Courses:", courses)
-
-    # データの型と内容をチェック
-    if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
-        print("Firebaseから取得したデータが不正です。")
+    student_indices = get_firebase_data('Students/student_info/student_index')
+    if not student_indices or not isinstance(student_indices, dict):
+        print("Firebaseから学生インデックスを取得できませんでした。")
         return
 
-    # Coursesデータをフィルタリングして辞書に変換
-    courses_dict = {
-        str(index): course
-        for index, course in enumerate(courses)
-        if course is not None and isinstance(course, dict)
-    }
+    for student_index, student_data in student_indices.items():
+        print(f"Processing student index: {student_index}")
 
-    # 学生のコース名を取得
-    course_names = [
-        courses_dict[cid]['course_name']
-        for cid in student_course_ids
-        if cid in courses_dict and 'course_name' in courses_dict[cid]
-    ]
+        sheet_id = student_data.get('sheet_id')
+        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
+        courses = get_firebase_data('Courses/course_id')
 
-    if not course_names:
-        print("コース名が見つかりませんでした。")
-        return
+        if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
+            print(f"学生インデックス {student_index} のデータが不正です。")
+            continue
 
-    # シート更新リクエストを準備
-    requests = prepare_update_requests(sheet_id, course_names)
-    if not requests:
-        print("シートを更新するリクエストがありません。")
-        return
+        # Coursesデータをフィルタリングして辞書に変換
+        courses_dict = {
+            str(index): course
+            for index, course in enumerate(courses)
+            if course is not None and isinstance(course, dict)
+        }
 
-    # シートを更新
-    sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=sheet_id,
-        body={'requests': requests}
-    ).execute()
-    print("シートを正常に更新しました。")
+        # 学生のコース名を取得
+        course_names = [
+            courses_dict[cid]['course_name']
+            for cid in student_course_ids
+            if cid in courses_dict and 'course_name' in courses_dict[cid]
+        ]
+
+        if not course_names:
+            print(f"学生インデックス {student_index} のコース名が見つかりませんでした。")
+            continue
+
+        for month in range(1, 13):
+            print(f"Processing month: {month} for student index: {student_index}")
+            requests = prepare_update_requests(sheet_id, course_names, month)
+            if not requests:
+                print(f"月 {month} のシートを更新するリクエストがありません。")
+                continue
+
+            # シートを更新
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=sheet_id,
+                body={'requests': requests}
+            ).execute()
+            print(f"月 {month} のシートを正常に更新しました。")
 
 
 if __name__ == "__main__":
