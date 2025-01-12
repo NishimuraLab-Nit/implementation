@@ -133,7 +133,6 @@ def prepare_update_requests(sheet_id, course_names):
     return requests
 
 
-# メイン処理
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
@@ -143,21 +142,33 @@ def main():
     student_course_ids = get_firebase_data('Students/enrollment/student_index/E534/course_id')
     courses = get_firebase_data('Courses/course_id')
 
+    # データの確認
     print("Sheet ID:", sheet_id)
     print("Student Course IDs:", student_course_ids)
     print("Courses:", courses)
 
-    if not sheet_id or not isinstance(student_course_ids, dict) or not isinstance(courses, list):
+    # データの型と内容をチェック
+    if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
         print("Firebaseから取得したデータが不正です。")
         return
 
-    # コースIDとコース名をマッピング
-    courses_dict = {str(i): course for i, course in enumerate(courses) if course}
+    # Coursesデータをフィルタリングして辞書に変換
+    courses_dict = {
+        str(index): course
+        for index, course in enumerate(courses)
+        if course is not None and isinstance(course, dict)
+    }
 
+    # 学生のコース名を取得
     course_names = [
-        courses_dict[cid]['course_name'] for cid in student_course_ids.values()
+        courses_dict[cid]['course_name']
+        for cid in student_course_ids
         if cid in courses_dict and 'course_name' in courses_dict[cid]
     ]
+
+    if not course_names:
+        print("コース名が見つかりませんでした。")
+        return
 
     # シート更新リクエストを準備
     requests = prepare_update_requests(sheet_id, course_names)
