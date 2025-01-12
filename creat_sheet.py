@@ -30,7 +30,7 @@ drive_service = build('drive', 'v3', credentials=creds)
 def create_spreadsheets_for_all_students():
     try:
         # Firebase データベースから全ての学生番号を取得
-        students_ref = db.reference('Students/enrollment/student_number')
+        students_ref = db.reference('Students/enrollment/student_index/{student_index}/student_number')
         all_students = students_ref.get()
 
         if all_students is None:
@@ -38,15 +38,15 @@ def create_spreadsheets_for_all_students():
 
         for student_number in all_students.keys():
             # 学生データを取得
-            student_data = all_students[student_number]
+            student_data = all_students[student_index]
 
             # 新しいスプレッドシートを作成
             spreadsheet = {
                 'properties': {'title': student_number}
             }
-            spreadsheet = sheets_service.spreadsheets().create(body=spreadsheet, fields='spreadsheetId').execute()
-            sheet_id = spreadsheet.get('spreadsheetId')
-            print(f'Spreadsheet ID for {student_number}: {sheet_id}')
+            spreadsheet = sheets_service.spreadsheets().create(body=spreadsheet, fields='sheet_id').execute()
+            sheet_id = spreadsheet.get('sheet_id')
+            print(f'Spreadsheet ID for {student_index}: {sheet_id}')
 
             # スプレッドシートのアクセス権限を設定
             permissions = [
@@ -65,7 +65,7 @@ def create_spreadsheets_for_all_students():
             batch.execute()
 
             # Firebase にスプレッドシートIDを保存
-            item_ref = db.reference(f'Students/item/student_number/{student_number}')
+            item_ref = db.reference(f'Students/student_info/student_index/{student_index}/sheet_id')
             item_ref.update({'sheet_id': sheet_id})
 
     except HttpError as error:
