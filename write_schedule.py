@@ -69,7 +69,7 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
     }
 
 
-def prepare_update_requests(sheet_id, class_names):
+def prepare_update_requests(sheet_id, course_names):
     if not class_names:
         print("Class names list is empty. Check data retrieved from Firebase.")
         return []
