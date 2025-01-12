@@ -66,18 +66,37 @@ def create_sheet_request(sheet_title):
         }
     }
 
+# Google Sheetsのシートをすべて取得
+def get_all_sheets(sheets_service, spreadsheet_id):
+    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    sheets = spreadsheet.get('sheets', [])
+    return [sheet['properties']['title'] for sheet in sheets]
+
+# シート名の重複を避けるためにユニークな名前を生成
+def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
+    existing_titles = get_all_sheets(sheets_service, spreadsheet_id)
+    if base_title not in existing_titles:
+        return base_title
+    
+    index = 1
+    while f"{base_title}-{index}" in existing_titles:
+        index += 1
+    return f"{base_title}-{index}"
+
 # シート更新リクエストを準備
-def prepare_update_requests(sheet_id, course_names, month, year=2025):
+def prepare_update_requests(sheet_id, course_names, month, sheets_service, spreadsheet_id, year=2025):
     if not course_names:
         print("コース名リストが空です。Firebaseから取得したデータを確認してください。")
         return []
 
-    # 月に対応するシート名を作成
-    sheet_title = f"{year}-{str(month).zfill(2)}"
+    # ユニークなシート名を生成
+    base_title = f"{year}-{str(month).zfill(2)}"
+    sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
 
     # シートを追加するリクエスト
     requests = [create_sheet_request(sheet_title)]
 
+    # 以下、その他のリクエスト生成部分はそのまま
     requests += [
         {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
         create_dimension_request(0, "COLUMNS", 0, 1, 100),
@@ -179,7 +198,7 @@ def main():
 
         for month in range(1, 13):
             print(f"Processing month: {month} for student index: {student_index}")
-            requests = prepare_update_requests(sheet_id, course_names, month)
+            requests = prepare_update_requests(sheet_id, course_names, month, sheets_service, sheet_id)
             if not requests:
                 print(f"月 {month} のシートを更新するリクエストがありません。")
                 continue
@@ -193,3 +212,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
