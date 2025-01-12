@@ -122,7 +122,7 @@ def prepare_update_requests(sheet_id, course_names, month):
             color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
             requests.append(create_conditional_formatting_request(
                 0, 0, end_row, current_date.day, current_date.day + 1, color,
-                f'=ISNUMBER(SEARCH("⌢{japanese_weekdays[weekday]}⌣", INDIRECT(ADDRESS(1, COLUMN()))))'
+                f'=ISNUMBER(SEARCH("⌢/n{japanese_weekdays[weekday]}/n⌣", INDIRECT(ADDRESS(1, COLUMN()))))'
             ))
         
 
