@@ -83,7 +83,6 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
         index += 1
     return f"{base_title}-{index}"
 
-# シート更新リクエストを準備
 def prepare_update_requests(sheet_id, course_names, month, sheets_service, spreadsheet_id, year=2025):
     if not course_names:
         print("コース名リストが空です。Firebaseから取得したデータを確認してください。")
@@ -94,31 +93,49 @@ def prepare_update_requests(sheet_id, course_names, month, sheets_service, sprea
     sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
 
     # シートを追加するリクエスト
-    requests = [create_sheet_request(sheet_title)]
+    add_sheet_request = create_sheet_request(sheet_title)
+    requests = [add_sheet_request]
 
-    # 以下、その他のリクエスト生成部分はそのまま
-    requests += [
-        {"appendDimension": {"sheetId": 0, "dimension": "COLUMNS", "length": 32}},
-        create_dimension_request(0, "COLUMNS", 0, 1, 100),
-        create_dimension_request(0, "COLUMNS", 1, 32, 35),
-        create_dimension_request(0, "ROWS", 0, 1, 120),
-        {"repeatCell": {"range": {"sheetId": 0},
+    # 追加したシートのIDを後で取得できるようにする
+    new_sheet_id = None
+
+    # 実際のbatchUpdateで新しいシートのIDを取得
+    response = sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={'requests': requests}
+    ).execute()
+
+    for reply in response.get('replies', []):
+        if 'addSheet' in reply:
+            new_sheet_id = reply['addSheet']['properties']['sheetId']
+
+    if new_sheet_id is None:
+        print("新しいシートのIDを取得できませんでした。")
+        return []
+
+    # 以降のリクエストに新しいシートIDを使用
+    requests = [
+        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 32}},
+        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
+        create_dimension_request(new_sheet_id, "COLUMNS", 1, 32, 35),
+        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
+        {"repeatCell": {"range": {"sheetId": new_sheet_id},
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
                         "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
+        {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
                                          "endColumnIndex": 32},
                            "top": {"style": "SOLID", "width": 1},
                            "bottom": {"style": "SOLID", "width": 1},
                            "left": {"style": "SOLID", "width": 1},
                            "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": 0, "startRowIndex": 0, "endRowIndex": 25,
+        {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 25,
                                                      "startColumnIndex": 0, "endColumnIndex": 32}}}}
     ]
 
     # 教科名を設定
-    requests.append(create_cell_update_request(0, 0, 0, "教科"))
+    requests.append(create_cell_update_request(new_sheet_id, 0, 0, "教科"))
     for i, name in enumerate(course_names):
-        requests.append(create_cell_update_request(0, i + 1, 0, name))
+        requests.append(create_cell_update_request(new_sheet_id, i + 1, 0, name))
 
     # 日付と土日セルの色付け
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
@@ -130,7 +147,7 @@ def prepare_update_requests(sheet_id, course_names, month, sheets_service, sprea
     while current_date <= end_date:
         weekday = current_date.weekday()
         date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
-        requests.append(create_cell_update_request(0, 0, current_date.day, date_string))
+        requests.append(create_cell_update_request(new_sheet_id, 0, current_date.day, date_string))
 
         # 土曜日と日曜日のセルに直接色を設定
         if weekday in (5, 6):
@@ -138,7 +155,7 @@ def prepare_update_requests(sheet_id, course_names, month, sheets_service, sprea
             requests.append({
                 "repeatCell": {
                     "range": {
-                        "sheetId": 0, 
+                        "sheetId": new_sheet_id, 
                         "startRowIndex": 0, 
                         "endRowIndex": end_row, 
                         "startColumnIndex": current_date.day, 
@@ -152,8 +169,8 @@ def prepare_update_requests(sheet_id, course_names, month, sheets_service, sprea
         current_date += timedelta(days=1)
 
     # 残りのシートの背景色を黒に設定
-    requests.append(create_black_background_request(0, 25, 1000, 0, 1000))
-    requests.append(create_black_background_request(0, 0, 1000, 32, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 25, 1000, 0, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 32, 1000))
 
     return requests
 
@@ -212,4 +229,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
