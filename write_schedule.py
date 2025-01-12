@@ -70,7 +70,7 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
 
 
 def prepare_update_requests(sheet_id, course_names):
-    if not class_names:
+    if not course_names:
         print("Class names list is empty. Check data retrieved from Firebase.")
         return []
 
@@ -93,7 +93,7 @@ def prepare_update_requests(sheet_id, course_names):
     ]
 
     requests.append(create_cell_update_request(0, 0, 0, "教科"))
-    requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(class_names))
+    requests.extend(create_cell_update_request(0, i + 1, 0, name) for i, name in enumerate(course_names))
 
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(2025, 1, 1)
