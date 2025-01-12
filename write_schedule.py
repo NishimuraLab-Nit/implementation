@@ -78,7 +78,6 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
     if base_title not in existing_titles:
         return base_title
     while f"{base_title}" in existing_titles:
-        index += 1
     return f"{base_title}"
 
 def prepare_update_requests(sheet_id, course_names, month, sheets_service, spreadsheet_id, year=2025):
