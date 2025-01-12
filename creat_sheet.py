@@ -30,7 +30,7 @@ drive_service = build('drive', 'v3', credentials=creds)
 def create_spreadsheets_for_all_students():
     try:
         # Firebase データベースから全ての学生番号を取得
-        students_ref = db.reference('Students/enrollment/student_index/E534/student_number')
+        students_ref = db.reference('Students/student_info/student_index/E534/student_number')
         all_students = students_ref.get()
 
         if all_students is None:
