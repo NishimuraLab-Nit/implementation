@@ -194,20 +194,24 @@ def main():
             print(f"学生インデックス {student_index} のデータが不正です。")
             continue
 
-        # Coursesデータをフィルタリングして辞書に変換
+        # Coursesデータを辞書化して不正データ（Noneや存在しない要素）を除外
         courses_dict = {
             str(index): course
             for index, course in enumerate(courses)
             if course is not None and isinstance(course, dict)
         }
-
+        
         # 学生のコース名を取得
-        course_names = [
-            courses_dict[cid]['course_name']
-            for cid in student_course_ids
-            if cid in courses_dict and 'course_name' in courses_dict[cid]
-        ]
-
+        course_names = []
+        for cid in student_course_ids:
+            if str(cid) in courses_dict:
+                course_name = courses_dict[str(cid)].get('course_name')
+                if course_name:
+                    course_names.append(course_name)
+            else:
+                print(f"コースID {cid} がCoursesデータに存在しません。")
+        
+        # エラーの場合の処理
         if not course_names:
             print(f"学生インデックス {student_index} のコース名が見つかりませんでした。")
             continue
