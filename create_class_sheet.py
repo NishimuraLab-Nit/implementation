@@ -25,17 +25,23 @@ sheets_service = build('sheets', 'v4', credentials=creds)
 drive_service = build('drive', 'v3', credentials=creds)
 
 
-def create_spreadsheets_for_class():
+def create_spreadsheets_for_all_classes():
     try:
-        # クラスのインデックスを取得（例として 'E5' を使用）
-        class_indexes = ['E5']  # 必要に応じてリストを動的に生成
+        # すべてのクラスデータを取得
+        all_classes = db.reference('Class/class_index').get()
+        print(f"Debug: Type of all_classes: {type(all_classes)}")
+        print(f"Debug: Content of all_classes: {all_classes}")
 
-        for class_index in class_indexes:
-            # クラス担任のメールアドレスを取得
-            class_teacher_name = db.reference(f'Class/class_index/{class_index}/class_teacher_name').get()
+        if not all_classes:
+            print("No classes found in the database.")
+            return
 
+        # 各クラスに対してスプレッドシートを作成
+        for class_index, class_data in all_classes.items():
+            # クラス担任の名前を取得
+            class_teacher_name = class_data.get('class_teacher_name')
             if not class_teacher_name:
-                print(f"Class teacher name not found for class index {class_index}")
+                print(f"Debug: No class_teacher_name found for class index {class_index}")
                 continue
 
             # 新しいスプレッドシートを作成
@@ -48,7 +54,7 @@ def create_spreadsheets_for_class():
                 body=spreadsheet_body, fields='spreadsheetId'
             ).execute()
             spreadsheet_id = spreadsheet.get('spreadsheetId')
-            print(f"Spreadsheet created with ID: {spreadsheet_id}")
+            print(f"Spreadsheet created for class {class_index} with ID: {spreadsheet_id}")
 
             # スプレッドシートのアクセス権限を設定
             permissions = [
@@ -74,7 +80,9 @@ def create_spreadsheets_for_class():
 
     except HttpError as error:
         print(f'API error occurred: {error}')
+    except Exception as e:
+        print(f'Unexpected error: {e}')
 
 
 # 実行
-create_spreadsheets_for_class()
+create_spreadsheets_for_all_classes()
