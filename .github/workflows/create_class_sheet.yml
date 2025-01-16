@@ -25,4 +25,4 @@ jobs:
     - name: Run script
       env:
         GOOGLE_APPLICATION_CREDENTIALS: /tmp/gcp_service_account.json
-      run: python creat_sheet.py
+      run: python creat_class_sheet.py
