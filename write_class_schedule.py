@@ -116,12 +116,6 @@ def main():
     for class_index, class_data in class_indices.items():
         print(f"Processing class index: {class_index}")
 
-        # シートIDを取得
-        file_name = class_data.get('file_name')
-        if not file_name:
-            print(f"Classインデックス {class_index} のfile_nameが見つかりません。")
-            continue
-
         # 学生データを取得
         student_indices = get_firebase_data('Students/student_info/student_index')
         if not student_indices or not isinstance(student_indices, dict):
@@ -152,14 +146,14 @@ def main():
         # 各月のシートを更新
         for month in range(1, 13):
             print(f"Processing month: {month} for class index: {class_index}")
-            requests = prepare_update_requests(file_name, student_names, month, sheets_service, file_name)
+            requests = prepare_update_requests(class_index, student_names, month, sheets_service, class_index)
             if not requests:
                 print(f"月 {month} のシートを更新するリクエストがありません。")
                 continue
 
             # シートを更新
             sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=file_name,
+                spreadsheetId=class_index,
                 body={'requests': requests}
             ).execute()
             print(f"月 {month} のシートを正常に更新しました。")
