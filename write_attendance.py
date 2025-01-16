@@ -83,7 +83,11 @@ def record_attendance(students_data, courses_data):
             continue
 
         # スプレッドシートを開く
-        sheet = client.open_by_key(sheet_id).sheet1
+        try:
+            sheet = client.open_by_key(sheet_id).sheet1
+        except Exception as e:
+            print(f"スプレッドシート {sheet_id} を開けません: {e}")
+            continue
 
         # 各コースの出席を確認
         for course_id in course_ids:
@@ -91,12 +95,10 @@ def record_attendance(students_data, courses_data):
             try:
                 course_id_int = int(course_id)  # course_idは文字列として取得される可能性があるため整数に変換
                 course = courses_list[course_id_int]  # リストからインデックスで取得
+                if not course:
+                    raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
             except (ValueError, IndexError):
-                print(f"無効なコースID {course_id} が見つかりました。")
-                continue
-
-            if not course:
-                print(f"コースID {course_id} に対応する授業が見つかりません。")
+                print(f"無効なコースID {course_id} が見つかりました。スキップします。")
                 continue
 
             # entry1とentry2の出席を確認
