@@ -106,7 +106,6 @@ def record_attendance(students_data, courses_data):
                 if not course:
                     raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
             except (ValueError, IndexError):
-                print(f"無効なコースID {course_id} が見つかりました。スキップします。")
                 continue
 
             # entry1とentry2の出席を確認
