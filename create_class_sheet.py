@@ -27,39 +27,32 @@ drive_service = build('drive', 'v3', credentials=creds)
 
 def create_spreadsheets_for_class():
     try:
-        # Firebase データベースから学生番号を取得
-        students_ref = db.reference('Students/student_info/student_index/E534/student_number')
-        all_students = students_ref.get()
+        # クラスのインデックスを取得（例として 'E5' を使用）
+        class_indexes = ['E5']  # 必要に応じてリストを動的に生成
 
-        # デバッグ: データの型と内容を確認
-        print("Debug: Type of all_students:", type(all_students))
-        print("Debug: Content of all_students:", all_students)
+        for class_index in class_indexes:
+            # クラス担任のメールアドレスを取得
+            class_teacher_name = db.reference(f'Class/class_index/{class_index}/class_teacher_name').get()
 
-        # データが取得できなかった場合のエラーハンドリング
-        if not all_students:
-            raise ValueError("No student data found in Firebase.")
+            if not class_teacher_name:
+                print(f"Class teacher name not found for class index {class_index}")
+                continue
 
-        # 単一の学生番号の場合、リストに変換（汎用的な処理のため）
-        if isinstance(all_students, str):
-            student_numbers = [all_students]
-        elif isinstance(all_students, list):
-            student_numbers = all_students
-        elif isinstance(all_students, dict):
-            student_numbers = all_students.keys()
-        else:
-            raise ValueError(f"Unexpected data format for student data: {type(all_students)}")
-
-        for student_number in student_numbers:
             # 新しいスプレッドシートを作成
+            spreadsheet_body = {
+                'properties': {
+                    'title': f'{class_index} Class Spreadsheet'
+                }
+            }
             spreadsheet = sheets_service.spreadsheets().create(
-                body=spreadsheet, fields='spreadsheetId'
+                body=spreadsheet_body, fields='spreadsheetId'
             ).execute()
             spreadsheet_id = spreadsheet.get('spreadsheetId')
-            print(f'Spreadsheet ID for {student_number}: {spreadsheet_id}')
+            print(f"Spreadsheet created with ID: {spreadsheet_id}")
 
             # スプレッドシートのアクセス権限を設定
             permissions = [
-                {'type': 'user', 'role': 'reader', 'emailAddress': f'{student_number}@denki.numazu-ct.ac.jp'},
+                {'type': 'user', 'role': 'writer', 'emailAddress': f'{class_teacher_name}@denki.numazu-ct.ac.jp'},
                 {'type': 'user', 'role': 'writer', 'emailAddress': 'naru.ibuki020301@gmail.com'}
             ]
 
@@ -72,15 +65,15 @@ def create_spreadsheets_for_class():
                     fields='id'
                 ))
             batch.execute()
+            print(f"Permissions set for spreadsheet ID: {spreadsheet_id}")
 
             # Firebase にスプレッドシート ID を保存
-            class_ref = db.reference('Courses/course_index/E5/class_sheet_id')  # 保存先を指定
+            class_ref = db.reference(f'Class/class_index/{class_index}/class_sheet_id')
             class_ref.set(spreadsheet_id)
+            print(f"Spreadsheet ID saved to Firebase for class index {class_index}")
 
     except HttpError as error:
         print(f'API error occurred: {error}')
-    except ValueError as e:
-        print(e)
 
 
 # 実行
