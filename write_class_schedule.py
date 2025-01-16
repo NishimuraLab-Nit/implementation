@@ -18,7 +18,11 @@ def get_google_sheets_service():
 
 # Firebaseからデータを取得
 def get_firebase_data(ref_path):
-    return db.reference(ref_path).get()
+    try:
+        return db.reference(ref_path).get()
+    except Exception as e:
+        print(f"Firebaseデータ取得エラー: {e}")
+        return None
 
 # セル更新リクエストを作成
 def create_cell_update_request(sheet_id, row_index, column_index, value):
@@ -29,6 +33,40 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
             "fields": "userEnteredValue"
         }
     }
+
+# シート作成リクエスト
+def create_sheet_request(sheet_title):
+    return {
+        "addSheet": {
+            "properties": {"title": sheet_title}
+        }
+    }
+
+# シートの次元設定リクエスト
+def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
+    return {
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": sheet_id,
+                "dimension": dimension,
+                "startIndex": start_index,
+                "endIndex": end_index
+            },
+            "properties": {"pixelSize": pixel_size},
+            "fields": "pixelSize"
+        }
+    }
+
+# ユニークなシート名を生成
+def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
+    existing_sheets = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute().get("sheets", [])
+    sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
+    title = base_title
+    counter = 1
+    while title in sheet_titles:
+        title = f"{base_title} ({counter})"
+        counter += 1
+    return title
 
 # シート更新リクエストを準備
 def prepare_update_requests(sheet_id, student_names, month, sheets_service, spreadsheet_id, year=2025):
@@ -44,22 +82,21 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     add_sheet_request = create_sheet_request(sheet_title)
     requests = [add_sheet_request]
 
-    # 実際のbatchUpdateで新しいシートのIDを取得
+    # 新しいシートの作成
     response = sheets_service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body={'requests': requests}
     ).execute()
 
-    new_sheet_id = None
-    for reply in response.get('replies', []):
-        if 'addSheet' in reply:
-            new_sheet_id = reply['addSheet']['properties']['sheetId']
-
+    new_sheet_id = next(
+        (reply['addSheet']['properties']['sheetId'] for reply in response.get('replies', []) if 'addSheet' in reply),
+        None
+    )
     if new_sheet_id is None:
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    # シートの初期設定
+    # シートの初期設定リクエスト
     requests = [
         {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 100}},
         create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
@@ -69,7 +106,7 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
                         "fields": "userEnteredFormat.horizontalAlignment"}}
     ]
 
-    # 学生名を3行目から記載
+    # 学生名を記載
     requests.append(create_cell_update_request(new_sheet_id, 2, 0, "学生名"))
     for i, name in enumerate(student_names):
         requests.append(create_cell_update_request(new_sheet_id, i + 3, 0, name))
@@ -87,14 +124,11 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     while current_date <= end_date:
         weekday = current_date.weekday()
         date_string = f"{current_date.strftime('%m')}/{current_date.strftime('%d')}\n{japanese_weekdays[weekday]}"
-        date_column = start_column
-
-        # 日付を記載
-        requests.append(create_cell_update_request(new_sheet_id, 0, date_column, date_string))
+        requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
         # 授業時限を記載（3列ごとに1つの時限）
         for i in range(3):
-            requests.append(create_cell_update_request(new_sheet_id, 1, date_column + i, period_labels[period_index]))
+            requests.append(create_cell_update_request(new_sheet_id, 1, start_column + i, period_labels[period_index]))
         period_index = (period_index + 1) % len(period_labels)
 
         # 日付ごとに3列空ける
@@ -103,18 +137,22 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
 
     return requests
 
+# メイン処理
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    # class_indexを取得
+    # クラスデータを取得
     class_indices = get_firebase_data('Class/class_index')
     if not class_indices or not isinstance(class_indices, dict):
         print("Classインデックスを取得できませんでした。")
         return
 
     for class_index, class_data in class_indices.items():
-        print(f"Processing class index: {class_index}")
+        spreadsheet_id = class_data.get("class_sheet_id")
+        if not spreadsheet_id:
+            print(f"クラス {class_index} のスプレッドシートIDが見つかりません。")
+            continue
 
         # 学生データを取得
         student_indices = get_firebase_data('Students/student_info/student_index')
@@ -122,38 +160,28 @@ def main():
             print("学生インデックスを取得できませんでした。")
             continue
 
-        # class_indexと一致するstudent_indexだけを抽出
-        matching_student_indices = [
-            index for index in student_indices if str(index).startswith(class_index)
+        # クラスに一致する学生を取得
+        student_names = [
+            student_data.get("student_name")
+            for index, student_data in student_indices.items()
+            if str(index).startswith(class_index) and student_data.get("student_name")
         ]
 
-        # 学生名を取得
-        student_names = []
-        for student_index in matching_student_indices:
-            student_data = student_indices.get(student_index)
-            if not student_data:
-                print(f"学生インデックス {student_index} のデータが見つかりません。")
-                continue
-
-            student_name = student_data.get("student_name")
-            if student_name:
-                student_names.append(student_name)
-
         if not student_names:
-            print(f"Classインデックス {class_index} に一致する学生名が見つかりませんでした。")
+            print(f"クラス {class_index} に一致する学生名が見つかりませんでした。")
             continue
 
         # 各月のシートを更新
         for month in range(1, 13):
             print(f"Processing month: {month} for class index: {class_index}")
-            requests = prepare_update_requests(class_index, student_names, month, sheets_service, class_index)
+            requests = prepare_update_requests(class_index, student_names, month, sheets_service, spreadsheet_id)
             if not requests:
                 print(f"月 {month} のシートを更新するリクエストがありません。")
                 continue
 
             # シートを更新
             sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=class_index,
+                spreadsheetId=spreadsheet_id,
                 body={'requests': requests}
             ).execute()
             print(f"月 {month} のシートを正常に更新しました。")
