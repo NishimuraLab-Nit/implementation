@@ -34,6 +34,7 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
 
     # 入室時間を日付オブジェクトに変換
     entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+    entry_month = entry_time.strftime("%Y-%m")  # シート名に使用する年月
     entry_day = entry_time.strftime("%A")
     entry_minutes = entry_time.hour * 60 + entry_time.minute
 
@@ -48,11 +49,18 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
 
     # 入室時間が許容範囲内か確認
     if abs(entry_minutes - start_minutes) <= 5:
+        # 対象のシートを取得し更新
+        try:
+            sheet_to_update = sheet.worksheet(entry_month)
+        except gspread.exceptions.WorksheetNotFound:
+            print(f"シート '{entry_month}' が見つかりません。スキップします。")
+            return False
+
         # 正しいセル位置を計算して更新
         row = int(course_id) + 1
         column = entry_time.day + 1
-        sheet.update_cell(row, column, "○")
-        print(f"出席確認: {course['class_name']} - {entry_label}")
+        sheet_to_update.update_cell(row, column, "○")
+        print(f"出席確認: {course['class_name']} - {entry_label} - シート: {entry_month}")
         return True
     return False
 
@@ -84,7 +92,7 @@ def record_attendance(students_data, courses_data):
 
         # スプレッドシートを開く
         try:
-            sheet = client.open_by_key(sheet_id).sheet1
+            sheet = client.open_by_key(sheet_id)
         except Exception as e:
             print(f"スプレッドシート {sheet_id} を開けません: {e}")
             continue
