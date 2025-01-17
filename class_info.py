@@ -57,16 +57,16 @@ for class_index, data in class_data.items():
 
 
 # class_indexの情報を設定
-class_index_data = ref.child(f'Class/class_index/{class_index}').get()
+class_index_data = ref.child('Class/class_index').get()
 
 if class_index_data:
     # class_indexに存在するクラスも考慮して格納
     for class_index, class_info in class_index_data.items():
         if class_index not in class_data:
             # クラスが存在しない場合、空のエントリを作成
-            class_ref.child(f'class_index/{class_index}/course_id').set('')
-            class_ref.child(f'class_index/{class_index}/student_index').set('')
-        # class_indexの詳細を保存
+            class_ref.child(f'{class_index}/course_id').set('')
+            class_ref.child(f'{class_index}/student_index').set('')
+        # 必要なclass_indexの詳細のみ保存
         class_ref.child(f'class_index/{class_index}').set(class_info)
 else:
     print("Warning: class_indexデータが存在しません。")
