@@ -32,7 +32,7 @@ def create_spreadsheets_for_courses():
             print("No course data found in Firebase.")
             return
 
-        for index, course_data in enumerate(all_courses):
+        for course_index, course_data in enumerate(all_courses):
             if not course_data:
                 continue
 
@@ -61,7 +61,7 @@ def create_spreadsheets_for_courses():
                 batch.execute()
 
             # Save the spreadsheet ID to Firebase
-            course_ref = db.reference(f'Courses/course_id/{index}')
+            course_ref = db.reference(f'Courses/course_id/{course_index}')
             course_ref.update({'course_sheet_id': sheet_id})
 
     except HttpError as error:
