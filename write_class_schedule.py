@@ -193,7 +193,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
 
     # 学生名と出席番号を記載
     requests.append(create_cell_update_request(new_sheet_id, 0, 1, "学生名"))
-    requests.append(create_cell_update_request(new_sheet_id, 0, 0, "出席番号"))
+    requests.append(create_cell_update_request(new_sheet_id, 0, 0, "AN"))
 
     for i, (name, attendance_number) in enumerate(zip(student_names, attendance_numbers)):
         requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))  # 学生名
