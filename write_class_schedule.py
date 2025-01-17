@@ -148,7 +148,7 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
 
     while current_date <= end_date:
         weekday = current_date.weekday()
-        date_string = f"{current_date.strftime('%m')}/{current_date.strftime('%d')}\n{japanese_weekdays[weekday]}"
+        date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
         # 授業時限を記載（1列ごとに1つの時限）
@@ -168,7 +168,11 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         current_date += timedelta(days=1)
 
     return requests
-
+    
+    # 残りのシートの背景色を黒に設定
+    requests.append(create_black_background_request(new_sheet_id, 36, 1000, 0, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
+    
 # メイン処理
 def main():
     initialize_firebase()
