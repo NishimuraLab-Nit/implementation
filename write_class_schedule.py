@@ -176,9 +176,10 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     requests.append(create_cell_update_request(new_sheet_id, 0, 1, "学生名"))
     requests.append(create_cell_update_request(new_sheet_id, 0, 0, "AN"))
 
-    for i, student in enumerate(student_names, attendance_numbers):
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, student))
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, student))
+    for i, name in enumerate(student_names):
+        requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))
+    for j, number in enumerate(attendance_number):
+        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, number))
 
     # 日付と授業時限を設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
