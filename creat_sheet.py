@@ -26,10 +26,6 @@ drive_service = build('drive', 'v3', credentials=creds)
 
 
 def create_spreadsheets_for_students():
-    """
-    全学生のGoogleスプレッドシートを作成し、アクセス権限を設定。
-    FirebaseデータベースにスプレッドシートIDを保存します。
-    """
     try:
         # Firebase データベースから学生情報を取得
         students_ref = db.reference('Students/student_info/student_index')
@@ -41,25 +37,22 @@ def create_spreadsheets_for_students():
         for student_id, student_data in all_students.items():
             # 学生情報が辞書型であることを確認
             if not isinstance(student_data, dict):
-                print(f"Skipping invalid student data for {student_id}")
                 continue
 
             # 学生名と番号を取得
-            student_name = student_data.get("student_name", "Unknown")
+            student_name = student_data.get("student_name")
             student_number = student_data.get("student_number")
             if not student_number:
-                print(f"Skipping student {student_name} due to missing student number.")
                 continue
 
             # 新しいスプレッドシートを作成
             spreadsheet = {
-                'properties': {'title': f"{student_name} ({student_number})"}
+                'properties': {'title': f"{student_number}"}
             }
             spreadsheet = sheets_service.spreadsheets().create(
                 body=spreadsheet, fields='spreadsheetId'
             ).execute()
             spreadsheet_id = spreadsheet.get('spreadsheetId')
-            print(f"Spreadsheet created for {student_name} (ID: {student_id}): {spreadsheet_id}")
 
             # スプレッドシートのアクセス権限を設定
             permissions = [
@@ -76,18 +69,9 @@ def create_spreadsheets_for_students():
                     fields='id'
                 ))
             batch.execute()
-
+            
             # Firebase にスプレッドシートIDを保存
             students_ref.child(student_id).update({'sheet_id': spreadsheet_id})
-
-    except HttpError as error:
-        print(f'Google API error: {error}')
-    except ValueError as e:
-        print(f"Value error: {e}")
-    except Exception as e:
-        print(f"Unexpected error: {e}")
-
-
 # 実行
 if __name__ == '__main__':
     create_spreadsheets_for_students()
