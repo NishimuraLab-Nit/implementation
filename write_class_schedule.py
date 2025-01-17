@@ -121,8 +121,11 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
     return title
 
 # シート更新リクエストを準備
-def prepare_update_requests(sheet_id, student_names, month, sheets_service, spreadsheet_id, year=2025):
+def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
+        print("学生名リストが空です。Firebaseから取得したデータを確認してください。")
+        return []
+    if not attendance_numbers:
         print("学生名リストが空です。Firebaseから取得したデータを確認してください。")
         return []
 
@@ -170,9 +173,12 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
                                                      ]
 
     # 学生名を記載
-    requests.append(create_cell_update_request(new_sheet_id, 0, 0, "学生名"))
-    for i, name in enumerate(student_names):
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, name))
+    requests.append(create_cell_update_request(new_sheet_id, 0, 1, "学生名"))
+    requests.append(create_cell_update_request(new_sheet_id, 0, 0, "AN"))
+
+    for i, name in enumerate(student_names, attendance_numbers):
+        requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))
+        requests.append(create_cell_update_request(new_sheet_id), i + 2, 0)
 
     # 日付と授業時限を設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
@@ -234,10 +240,14 @@ def main():
             if str(index).startswith(class_index) and student_data.get("student_name")
         ]
 
+        attendance_numbers = [
+            attendance_number_data.get("attendance_number")
+        ]
+
         if not student_names:
             print(f"クラス {class_index} に一致する学生名が見つかりませんでした。")
             continue
-
+        
         for month in range(1, 13):
             print(f"Processing month: {month} for class index: {class_index}")
             requests = prepare_update_requests(class_index, student_names, month, sheets_service, spreadsheet_id)
