@@ -83,6 +83,29 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
         index += 1
     return f"{base_title}-{index}"
 
+# Firebaseからデータを取得してコース名を生成する関数（修正版）
+def get_course_names(student_index):
+    student_course_ids_str = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
+    if not student_course_ids_str:
+        print(f"学生インデックス {student_index} に関連付けられたコースが見つかりません。")
+        return []
+
+    student_course_ids = [cid.strip() for cid in student_course_ids_str.split(',') if cid.strip().isdigit()]
+    courses = get_firebase_data('Courses/course_id')
+    if not courses or not isinstance(courses, list):
+        print("コースデータが不正です。")
+        return []
+
+    course_names = []
+    for cid in student_course_ids:
+        if int(cid) < len(courses) and courses[int(cid)]:
+            course_data = courses[int(cid)]
+            course_name = course_data.get('course_name')
+            if course_name:
+                course_names.append(course_name)
+
+    return course_names
+    
 # シート更新リクエストを準備
 def prepare_update_requests(sheet_id, course_names, month, year, sheets_service, spreadsheet_id):
     if not course_names:
@@ -139,29 +162,6 @@ def prepare_update_requests(sheet_id, course_names, month, year, sheets_service,
         current_date += timedelta(days=1)
 
     return requests
-
-# Firebaseからデータを取得してコース名を生成する関数（修正版）
-def get_course_names(student_index):
-    student_course_ids_str = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-    if not student_course_ids_str:
-        print(f"学生インデックス {student_index} に関連付けられたコースが見つかりません。")
-        return []
-
-    student_course_ids = [cid.strip() for cid in student_course_ids_str.split(',') if cid.strip().isdigit()]
-    courses = get_firebase_data('Courses/course_id')
-    if not courses or not isinstance(courses, list):
-        print("コースデータが不正です。")
-        return []
-
-    course_names = []
-    for cid in student_course_ids:
-        if int(cid) < len(courses) and courses[int(cid)]:
-            course_data = courses[int(cid)]
-            course_name = course_data.get('course_name')
-            if course_name:
-                course_names.append(course_name)
-
-    return course_names
 
 # メイン処理（修正）
 def main():
