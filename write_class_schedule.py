@@ -152,21 +152,22 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
 
     # 必要な列をスプレッドシートに追加
     requests = [
-        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 125}},
+        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 126}},
+        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 35),
         create_dimension_request(new_sheet_id, "COLUMNS", 1, 1, 100),
-        create_dimension_request(new_sheet_id, "COLUMNS", 1, 125, 35),
+        create_dimension_request(new_sheet_id, "COLUMNS", 1, 126, 35),
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         {"repeatCell": {"range": {"sheetId": new_sheet_id},
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
                         "fields": "userEnteredFormat.horizontalAlignment"}},
         {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0,
-                                         "endColumnIndex": 125},
+                                         "endColumnIndex": 126},
                            "top": {"style": "SOLID", "width": 1},
                            "bottom": {"style": "SOLID", "width": 1},
                            "left": {"style": "SOLID", "width": 1},
                            "right": {"style": "SOLID", "width": 1}}},
         {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35,
-                                                     "startColumnIndex": 0, "endColumnIndex": 125}}}}
+                                                     "startColumnIndex": 0, "endColumnIndex": 126}}}}
                                                      ]
 
     # 学生名を記載
@@ -205,7 +206,7 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
 
     # 残りのシートの背景色を黒に設定
     requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
-    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 125, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
     
     return requests
 
