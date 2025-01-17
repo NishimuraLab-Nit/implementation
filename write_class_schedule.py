@@ -1,7 +1,11 @@
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 from datetime import datetime, timedelta
+import httplib2
+import time
+import socket
 
 # Firebaseの初期化
 def initialize_firebase():
@@ -14,7 +18,8 @@ def initialize_firebase():
 def get_google_sheets_service():
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
-    return build('sheets', 'v4', credentials=google_creds)
+    http = google_creds.authorize(httplib2.Http(timeout=60))  # タイムアウトを60秒に設定
+    return build('sheets', 'v4', credentials=google_creds, cache_discovery=False, http=http)
 
 # Firebaseからデータを取得
 def get_firebase_data(ref_path):
@@ -23,6 +28,18 @@ def get_firebase_data(ref_path):
     except Exception as e:
         print(f"Firebaseデータ取得エラー: {e}")
         return None
+
+# リトライ付きリクエスト実行
+def execute_with_retry(request, retries=3, delay=5):
+    for attempt in range(retries):
+        try:
+            return request.execute()
+        except (HttpError, socket.timeout) as e:
+            print(f"リクエスト失敗 ({attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
 
 # セル更新リクエストを作成
 def create_cell_update_request(sheet_id, row_index, column_index, value):
@@ -75,7 +92,9 @@ def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_co
 
 # ユニークなシート名を生成
 def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
-    existing_sheets = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute().get("sheets", [])
+    existing_sheets = execute_with_retry(
+        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+    ).get("sheets", [])
     sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
     title = base_title
     counter = 1
@@ -99,10 +118,12 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     requests = [add_sheet_request]
 
     # 新しいシートの作成
-    response = sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={'requests': requests}
-    ).execute()
+    response = execute_with_retry(
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': requests}
+        )
+    )
 
     new_sheet_id = next(
         (reply['addSheet']['properties']['sheetId'] for reply in response.get('replies', []) if 'addSheet' in reply),
@@ -112,26 +133,7 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    # 以降のリクエストに新しいシートIDを使用
-     # 以降のリクエストに新しいシートIDを使用
-    requests = [
-        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 125}},
-        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
-        create_dimension_request(new_sheet_id, "COLUMNS", 1, 125, 35),
-        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
-        {"repeatCell": {"range": {"sheetId": new_sheet_id},
-                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-                        "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0,
-                                         "endColumnIndex": 125},
-                           "top": {"style": "SOLID", "width": 1},
-                           "bottom": {"style": "SOLID", "width": 1},
-                           "left": {"style": "SOLID", "width": 1},
-                           "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35,
-                                                     "startColumnIndex": 0, "endColumnIndex": 125}}}}
-                                                     ]
-
+    requests = []
     # 学生名を記載
     requests.append(create_cell_update_request(new_sheet_id, 2, 0, "学生名"))
     for i, name in enumerate(student_names):
@@ -143,42 +145,34 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
     current_date = start_date
-    start_column = 1  # 日付の開始列（1列目は学生名用）
-    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]  # 授業時限ラベル
+    start_column = 1
+    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]
 
     while current_date <= end_date:
         weekday = current_date.weekday()
         date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
-        # 授業時限を記載（1列ごとに1つの時限）
         for period_index, period in enumerate(period_labels):
             requests.append(create_cell_update_request(new_sheet_id, 1, start_column + period_index, period))
 
-        # 土日のセルに色を付ける
-        if weekday == 5:  # 土曜日
-            color = {"red": 0.8, "green": 0.9, "blue": 1.0}  # 青色
+        if weekday == 5:
+            color = {"red": 0.8, "green": 0.9, "blue": 1.0}
             requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
-        elif weekday == 6:  # 日曜日
-            color = {"red": 1.0, "green": 0.8, "blue": 0.8}  # 赤色
+        elif weekday == 6:
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8}
             requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
 
-        # 日付ごとに時限分の列を進める
         start_column += len(period_labels)
         current_date += timedelta(days=1)
 
     return requests
-    
-    # 残りのシートの背景色を黒に設定
-    requests.append(create_black_background_request(new_sheet_id, 36, 1000, 0, 1000))
-    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
-    
+
 # メイン処理
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    # クラスデータを取得
     class_indices = get_firebase_data('Class/class_index')
     if not class_indices or not isinstance(class_indices, dict):
         print("Classインデックスを取得できませんでした。")
@@ -190,13 +184,11 @@ def main():
             print(f"クラス {class_index} のスプレッドシートIDが見つかりません。")
             continue
 
-        # 学生データを取得
         student_indices = get_firebase_data('Students/student_info/student_index')
         if not student_indices or not isinstance(student_indices, dict):
             print("学生インデックスを取得できませんでした。")
             continue
 
-        # クラスに一致する学生を取得
         student_names = [
             student_data.get("student_name")
             for index, student_data in student_indices.items()
@@ -207,7 +199,6 @@ def main():
             print(f"クラス {class_index} に一致する学生名が見つかりませんでした。")
             continue
 
-        # 各月のシートを更新
         for month in range(1, 13):
             print(f"Processing month: {month} for class index: {class_index}")
             requests = prepare_update_requests(class_index, student_names, month, sheets_service, spreadsheet_id)
@@ -215,11 +206,12 @@ def main():
                 print(f"月 {month} のシートを更新するリクエストがありません。")
                 continue
 
-            # シートを更新
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={'requests': requests}
-            ).execute()
+            execute_with_retry(
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={'requests': requests}
+                )
+            )
             print(f"月 {month} のシートを正常に更新しました。")
 
 if __name__ == "__main__":
