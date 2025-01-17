@@ -57,7 +57,7 @@ for class_index, data in class_data.items():
 
 
 # class_indexの情報を設定
-class_index_data = ref.child('Class/class_index').get()
+class_index_data = ref.child(f'Class/class_index/{class_index}').get()
 
 if class_index_data:
     # class_indexに存在するクラスも考慮して格納
