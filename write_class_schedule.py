@@ -142,18 +142,18 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         date_string = f"{current_date.strftime('%m')}/{current_date.strftime('%d')}\n{japanese_weekdays[weekday]}"
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
-        # 授業時限を記載（3列ごとに1つの時限）
-        for i in range(4):
+        # 授業時限を記載（1列ごとに1つの時限）
+        for i in range(1):
             requests.append(create_cell_update_request(new_sheet_id, 1, start_column + i, period_labels[period_index]))
         period_index = (period_index + 1) % len(period_labels)
 
         # 土日のセルに色を付ける
         if weekday == 5:  # 土曜日
             color = {"red": 0.8, "green": 0.9, "blue": 1.0}  # 青色
-            requests.append(create_weekend_color_request(new_sheet_id, 0, 25, start_column, start_column + 4, color))
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + 4, color))
         elif weekday == 6:  # 日曜日
             color = {"red": 1.0, "green": 0.8, "blue": 0.8}  # 赤色
-            requests.append(create_weekend_color_request(new_sheet_id, 0, 25, start_column, start_column + 4, color))
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + 4, color))
 
         # 日付ごとに4列空ける
         start_column += 4
