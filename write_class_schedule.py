@@ -242,6 +242,8 @@ def main():
 
         attendance_numbers = [
             attendance_number_data.get("attendance_number")
+            for index, attendance_number_data in student_indices.items()
+
         ]
 
         if not student_names:
