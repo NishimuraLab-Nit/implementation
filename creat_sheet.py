@@ -73,5 +73,5 @@ def create_spreadsheets_for_students():
             # Firebase にスプレッドシートIDを保存
             students_ref.child(student_id).update({'sheet_id': spreadsheet_id})
 # 実行
-if __name__ == '__main__':
+__name__ == '__main__':
     create_spreadsheets_for_students()
