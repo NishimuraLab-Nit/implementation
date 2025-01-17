@@ -140,15 +140,37 @@ def prepare_update_requests(sheet_id, course_names, month, year, sheets_service,
 
     return requests
 
-# メイン処理
+# Firebaseからデータを取得してコース名を生成する関数（修正版）
+def get_course_names(student_index):
+    student_course_ids_str = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
+    if not student_course_ids_str:
+        print(f"学生インデックス {student_index} に関連付けられたコースが見つかりません。")
+        return []
+
+    student_course_ids = [cid.strip() for cid in student_course_ids_str.split(',') if cid.strip().isdigit()]
+    courses = get_firebase_data('Courses/course_id')
+    if not courses or not isinstance(courses, list):
+        print("コースデータが不正です。")
+        return []
+
+    course_names = []
+    for cid in student_course_ids:
+        if int(cid) < len(courses) and courses[int(cid)]:
+            course_data = courses[int(cid)]
+            course_name = course_data.get('course_name')
+            if course_name:
+                course_names.append(course_name)
+
+    return course_names
+
+# メイン処理（修正）
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    # Firebaseからデータを取得
     student_indices = get_firebase_data('Students/student_info/student_index')
     if not student_indices or not isinstance(student_indices, dict):
-        print("Firebaseから学生インデックスを取得できませんでした。")
+        print("Firebaseから学生インデックスを取得できませんでした。データ構造を確認してください。")
         return
 
     for student_index, student_data in student_indices.items():
@@ -159,22 +181,11 @@ def main():
             print(f"学生インデックス {student_index} に対応するスプレッドシートIDが見つかりません。")
             continue
 
-        # コース名を取得
-        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-        courses = get_firebase_data('Courses/course_id')
-        courses_dict = {str(i): course for i, course in enumerate(courses) if course}
-
-        course_names = [
-            courses_dict.get(str(cid), {}).get('course_name')
-            for cid in student_course_ids if isinstance(cid, int)
-        ]
-
-        # データが正しいか確認
+        course_names = get_course_names(student_index)
         if not course_names:
             print(f"学生インデックス {student_index} のコース名が見つかりませんでした。")
             continue
 
-        # 月ごとにリクエストを準備して実行
         for month in range(1, 13):
             print(f"Processing month: {month} for student index: {student_index}")
             requests = prepare_update_requests(sheet_id, course_names, month, 2025, sheets_service, sheet_id)
@@ -190,3 +201,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
