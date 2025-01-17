@@ -42,7 +42,7 @@ def create_sheet_request(sheet_title):
         }
     }
 
-# シートの次元設定リクエスト
+# シート次元設定リクエスト
 def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
     return {
         "updateDimensionProperties": {
@@ -54,6 +54,22 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
             },
             "properties": {"pixelSize": pixel_size},
             "fields": "pixelSize"
+        }
+    }
+
+# 土日セルの色付けリクエストを作成
+def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_col, color):
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_col,
+                "endColumnIndex": end_col
+            },
+            "cell": {"userEnteredFormat": {"backgroundColor": color}},
+            "fields": "userEnteredFormat.backgroundColor"
         }
     }
 
@@ -130,6 +146,14 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         for i in range(4):
             requests.append(create_cell_update_request(new_sheet_id, 1, start_column + i, period_labels[period_index]))
         period_index = (period_index + 1) % len(period_labels)
+
+        # 土日のセルに色を付ける
+        if weekday == 5:  # 土曜日
+            color = {"red": 0.8, "green": 0.9, "blue": 1.0}  # 青色
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 25, start_column, start_column + 4, color))
+        elif weekday == 6:  # 日曜日
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8}  # 赤色
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 25, start_column, start_column + 4, color))
 
         # 日付ごとに4列空ける
         start_column += 4
