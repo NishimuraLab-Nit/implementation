@@ -216,4 +216,56 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
             requests.append(create_cell_update_request(new_sheet_id, 1, start_column + period_index, period))
 
         if weekday == 5:
-            color = {"red": 0.8, "green": 0.9, "
+            color = {"red": 0.8, "green": 0.9, "blue": 1.0}
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
+        elif weekday == 6:
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8}
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
+
+        start_column += len(period_labels)
+        current_date += timedelta(days=1)
+
+    # 残りのシートの背景色を黒に設定
+    requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
+    
+    return requests
+
+# メイン処理
+def main():
+    initialize_firebase()
+    sheets_service = get_google_sheets_service()
+
+    class_indices = get_firebase_data('Class/class_index')
+    if not class_indices or not isinstance(class_indices, dict):
+        print("Classインデックスを取得できませんでした。")
+        return
+
+    for class_index, class_data in class_indices.items():
+        spreadsheet_id = class_data.get("class_sheet_id")
+        if not spreadsheet_id:
+            print(f"クラス {class_index} のスプレッドシートIDが見つかりません。")
+            continue
+
+        student_names, attendance_numbers = get_student_data(class_index)
+        if not student_names:
+            print(f"クラス {class_index} に一致する学生名が見つかりませんでした。")
+            continue
+        
+        for month in range(1, 13):
+            print(f"Processing month: {month} for class index: {class_index}")
+            requests = prepare_update_requests(class_index, student_names, attendance_numbers, month, sheets_service, spreadsheet_id)
+            if not requests:
+                print(f"月 {month} のシートを更新するリクエストがありません。")
+                continue
+
+            execute_with_retry(
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={'requests': requests}
+                )
+            )
+            print(f"月 {month} のシートを正常に更新しました。")
+
+if __name__ == "__main__":
+    main()
