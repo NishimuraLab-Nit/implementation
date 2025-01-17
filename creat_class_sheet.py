@@ -38,11 +38,14 @@ def create_spreadsheets_for_all_classes():
 
         # 各クラスに対してスプレッドシートを作成
         for class_index, class_data in all_classes.items():
-            # クラス担任の名前を取得
-            class_teacher_name = class_data.get('class_teacher_name')
-            if not class_teacher_name:
-                print(f"Debug: No class_teacher_name found for class index {class_index}")
+            # クラス担任のIDを取得
+            class_teacher_id = class_data.get('class_teacher_id')
+            if not class_teacher_id:
+                print(f"Debug: No class_teacher_id found for class index {class_index}")
                 continue
+
+            # クラス担任のメールアドレスを生成
+            class_teacher_email = f"{class_teacher_id}@denki.numazu-ct.ac.jp"
 
             # 新しいスプレッドシートを作成
             spreadsheet_body = {
@@ -58,7 +61,7 @@ def create_spreadsheets_for_all_classes():
 
             # スプレッドシートのアクセス権限を設定
             permissions = [
-                {'type': 'user', 'role': 'writer', 'emailAddress': f'{class_teacher_name}@denki.numazu-ct.ac.jp'},
+                {'type': 'user', 'role': 'writer', 'emailAddress': class_teacher_email},
                 {'type': 'user', 'role': 'writer', 'emailAddress': 'naru.ibuki020301@gmail.com'}
             ]
 
