@@ -33,6 +33,9 @@ if courses_data:
                 }
             class_data[class_name]['course_ids'].append(str(index))  # course_idを文字列として格納
 
+print("Courses Data:", courses_data)
+print("Class Data after processing Courses:", class_data)
+
 # Studentsの処理
 if students_data:
     for student_index, student_info in students_data.items():
@@ -41,6 +44,9 @@ if students_data:
                 # class_indexが一致する場合、student_indexを格納
                 if student_index.startswith(class_index):
                     class_data[class_index]['student_indices'].append(student_index)
+
+print("Students Data:", students_data)
+print("Class Data after processing Students:", class_data)
 
 # データベースにClassデータを格納
 class_ref = ref.child('Class')
@@ -53,10 +59,13 @@ for class_index, data in class_data.items():
     student_indices_str = ', '.join(data['student_indices'])
     class_ref.child(f'class_index/{class_index}/student_index').set(student_indices_str)
 
+    print(f"Saved data for class_index {class_index}: course_ids={course_ids_str}, student_indices={student_indices_str}")
+
 # class_indexの情報を設定
 class_index_data = ref.child('Class/class_index').get()
 if class_index_data:
     for class_index, class_info in class_index_data.items():
         class_ref.child(f'class_index/{class_index}').set(class_info)
+        print(f"Class index {class_index} data set: {class_info}")
 
 print("データの処理と格納が完了しました。")
