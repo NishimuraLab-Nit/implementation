@@ -178,7 +178,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
 
     for i, name in enumerate(student_names, attendance_numbers):
         requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))
-        requests.append(create_cell_update_request(new_sheet_id), i + 2, 0)
+        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, number))
 
     # 日付と授業時限を設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
