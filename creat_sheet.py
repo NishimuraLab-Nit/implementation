@@ -25,17 +25,16 @@ sheets_service = build('sheets', 'v4', credentials=creds)
 drive_service = build('drive', 'v3', credentials=creds)
 
 
-def create_spreadsheets_for_all_students():
+def create_spreadsheets_for_all_students(student_index):
+    """
+    学生ごとに新しいGoogleスプレッドシートを作成し、アクセス権限を設定。
+    FirebaseデータベースにスプレッドシートIDを保存します。
+    """
     try:
         # Firebase データベースから全ての学生番号を取得
         students_ref = db.reference(f'Students/student_info/student_index/{student_index}/student_number')
         all_students = students_ref.get()
 
-        # デバッグ: データの型と内容を確認
-        print("Debug: Type of all_students:", type(all_students))
-        print("Debug: Content of all_students:", all_students)
-
-        # データが取得できなかった場合のエラーハンドリング
         if not all_students:
             raise ValueError("No student data found in Firebase.")
 
@@ -45,7 +44,7 @@ def create_spreadsheets_for_all_students():
         elif isinstance(all_students, list):
             student_numbers = all_students
         elif isinstance(all_students, str):
-            student_numbers = [all_students]  # 単一データをリストに変換
+            student_numbers = [all_students]
         else:
             raise ValueError(f"Unexpected data format for student data: {type(all_students)}")
 
@@ -77,14 +76,19 @@ def create_spreadsheets_for_all_students():
             batch.execute()
 
             # Firebase にスプレッドシートIDを保存
-            student_ref = db.reference(f'Students/student_info/student_index/{student_index}/sheet_id')
+            student_ref = db.reference(f'Students/student_info/student_index/{student_index}')
             student_ref.update({'sheet_id': spreadsheet_id})
 
     except HttpError as error:
         print(f'API error occurred: {error}')
     except ValueError as e:
-        print(e)
+        print(f'Value error: {e}')
+    except Exception as e:
+        print(f'An unexpected error occurred: {e}')
 
 
-# 実行
-create_spreadsheets_for_all_students()
+# 実行例（student_index を適切に指定）
+if __name__ == '__main__':
+    # student_index の指定（例: 1）
+    student_index = 1
+    create_spreadsheets_for_all_students(student_index)
