@@ -60,6 +60,34 @@ def get_all_sheets(sheets_service, spreadsheet_id):
     return [sheet['properties']['title'] for sheet in sheets]
 
 
+# セル更新リクエストを作成
+def create_cell_update_request(sheet_id, row_index, column_index, value):
+    return {
+        "updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
+            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
+            "fields": "userEnteredValue"
+        }
+    }
+
+
+# 背景色リクエストを作成
+def create_background_color_request(sheet_id, start_row, end_row, start_col, end_col, color):
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_col,
+                "endColumnIndex": end_col,
+            },
+            "cell": {"userEnteredFormat": {"backgroundColor": color}},
+            "fields": "userEnteredFormat.backgroundColor",
+        }
+    }
+
+
 # シート更新リクエストを準備
 def prepare_update_requests(sheet_id, course_names, month, sheets_service, spreadsheet_id, year=2025):
     if not course_names:
@@ -83,8 +111,42 @@ def prepare_update_requests(sheet_id, course_names, month, sheets_service, sprea
     # 初期リクエスト
     requests = [add_sheet_request]
 
-    # 日付やデータを設定するロジック
-    # ...
+    # 新しいシートIDを取得
+    response = sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body={"requests": [add_sheet_request]}
+    ).execute()
+
+    new_sheet_id = None
+    for reply in response.get('replies', []):
+        if 'addSheet' in reply:
+            new_sheet_id = reply['addSheet']['properties']['sheetId']
+
+    if not new_sheet_id:
+        print("新しいシートIDの取得に失敗しました。")
+        return []
+
+    # 教科名を設定
+    requests.append(create_cell_update_request(new_sheet_id, 0, 0, "教科"))
+    for i, name in enumerate(course_names):
+        requests.append(create_cell_update_request(new_sheet_id, i + 1, 0, name))
+
+    # 日付と週末の色付け
+    start_date = datetime(year, month, 1)
+    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    current_date = start_date
+    while current_date <= end_date:
+        weekday = current_date.weekday()
+        date_string = current_date.strftime('%m/%d') + f"\n{['月', '火', '水', '木', '金', '土', '日'][weekday]}"
+        requests.append(create_cell_update_request(new_sheet_id, 0, current_date.day, date_string))
+
+        # 土曜: 青, 日曜: 赤
+        if weekday in [5, 6]:
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8} if weekday == 6 else {"red": 0.8, "green": 0.9, "blue": 1.0}
+            requests.append(create_background_color_request(new_sheet_id, 1, 1000, current_date.day, current_date.day + 1, color))
+
+        current_date += timedelta(days=1)
 
     return requests
 
