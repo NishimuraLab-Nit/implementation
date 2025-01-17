@@ -98,21 +98,8 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
 
     # シートの初期設定リクエスト
     requests = [
-        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 32}},
-        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
-        create_dimension_request(new_sheet_id, "COLUMNS", 1, 32, 35),
-        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
-        {"repeatCell": {"range": {"sheetId": new_sheet_id},
-                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-                        "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
-                                         "endColumnIndex": 32},
-                           "top": {"style": "SOLID", "width": 1},
-                           "bottom": {"style": "SOLID", "width": 1},
-                           "left": {"style": "SOLID", "width": 1},
-                           "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 25,
-                                                     "startColumnIndex": 0, "endColumnIndex": 32}}}}
+        create_dimension_request(new_sheet_id, "COLUMNS", 0, 32, 35),  # 列数を明示的に設定
+        create_dimension_request(new_sheet_id, "ROWS", 0, 25, 120),
     ]
 
     # 学生名を記載
@@ -124,42 +111,18 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    end_row = 125
     
-    current_date = start_date
-    start_column = 1  # 日付の開始列（1列目は学生名用）
-    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]  # 授業時限ラベル
-    period_index = 0  # 授業時限ラベルのインデックス
+    # 列数の制限を確認
+    max_columns = 32  # 最大列数
+    current_column = 1
 
-    while current_date <= end_date:
+    while current_date <= end_date and current_column < max_columns:
         weekday = current_date.weekday()
         date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
-        requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
-
-        # 土曜日と日曜日のセルに直接色を設定
-        if weekday in (5, 6):
-            color = {"red": 0.8, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.8, "blue": 0.8}
-            requests.append({
-                "repeatCell": {
-                    "range": {
-                        "sheetId": new_sheet_id, 
-                        "startRowIndex": 0, 
-                        "endRowIndex": end_row, 
-                        "startColumnIndex": current_date.day, 
-                        "endColumnIndex": current_date.day + 1
-                    },
-                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
-                    "fields": "userEnteredFormat.backgroundColor"
-                }
-            })
-            
-        # 授業時限を記載（3列ごとに1つの時限）
-        for i in range(1):
-            requests.append(create_cell_update_request(new_sheet_id, 1, start_column + i, period_labels[period_index]))
-        period_index = (period_index + 1) % len(period_labels)
+        requests.append(create_cell_update_request(new_sheet_id, 0, current_column, date_string))
 
         # 日付ごとに3列空ける
-        start_column += 4
+        current_column += 4
         current_date += timedelta(days=1)
 
     return requests
