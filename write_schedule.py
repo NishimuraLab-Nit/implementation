@@ -115,13 +115,13 @@ def prepare_update_requests(sheet_id, course_names, month, sheets_service, sprea
         {"repeatCell": {"range": {"sheetId": new_sheet_id},
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
                         "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 25, "startColumnIndex": 0,
+        {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 45, "startColumnIndex": 0,
                                          "endColumnIndex": 32},
                            "top": {"style": "SOLID", "width": 1},
                            "bottom": {"style": "SOLID", "width": 1},
                            "left": {"style": "SOLID", "width": 1},
                            "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 25,
+        {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 45,
                                                      "startColumnIndex": 0, "endColumnIndex": 32}}}}
                                                      ]
         # 教科名を設定
@@ -159,7 +159,7 @@ def prepare_update_requests(sheet_id, course_names, month, sheets_service, sprea
         current_date += timedelta(days=1)
 
     # 残りのシートの背景色を黒に設定
-    requests.append(create_black_background_request(new_sheet_id, 25, 1000, 0, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 45, 1000, 0, 1000))
     requests.append(create_black_background_request(new_sheet_id, 0, 1000, 32, 1000))
 
     return requests
