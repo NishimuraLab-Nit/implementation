@@ -98,31 +98,41 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
 
     # シートの初期設定リクエスト
     requests = [
-        create_dimension_request(new_sheet_id, "COLUMNS", 0, 32, 35),  # 列数を明示的に設定
-        create_dimension_request(new_sheet_id, "ROWS", 0, 25, 120),
+        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 100}},
+        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
+        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
+        {"repeatCell": {"range": {"sheetId": new_sheet_id},
+                        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+                        "fields": "userEnteredFormat.horizontalAlignment"}}
     ]
 
     # 学生名を記載
-    requests.append(create_cell_update_request(new_sheet_id, 1, 0, "学生名"))
+    requests.append(create_cell_update_request(new_sheet_id, 2, 0, "学生名"))
     for i, name in enumerate(student_names):
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, name))
+        requests.append(create_cell_update_request(new_sheet_id, i + 3, 0, name))
 
     # 日付と授業時限を設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    
-    # 列数の制限を確認
-    max_columns = 32  # 最大列数
-    current_column = 1
 
-    while current_date <= end_date and current_column < max_columns:
+    current_date = start_date
+    start_column = 1  # 日付の開始列（1列目は学生名用）
+    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]  # 授業時限ラベル
+    period_index = 0  # 授業時限ラベルのインデックス
+
+    while current_date <= end_date:
         weekday = current_date.weekday()
-        date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
-        requests.append(create_cell_update_request(new_sheet_id, 0, current_column, date_string))
+        date_string = f"{current_date.strftime('%m')}/{current_date.strftime('%d')}\n{japanese_weekdays[weekday]}"
+        requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
-        # 日付ごとに3列空ける
-        current_column += 4
+        # 授業時限を記載（3列ごとに1つの時限）
+        for i in range(4):
+            requests.append(create_cell_update_request(new_sheet_id, 1, start_column + i, period_labels[period_index]))
+        period_index = (period_index + 1) % len(period_labels)
+
+        # 日付ごとに4列空ける
+        start_column += 4
         current_date += timedelta(days=1)
 
     return requests
