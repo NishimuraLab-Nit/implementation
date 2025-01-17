@@ -189,10 +189,10 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         start_column += len(period_labels)
         current_date += timedelta(days=1)
 
-        # 残りのシートの背景色を黒に設定
-        requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
-        requests.append(create_black_background_request(new_sheet_id, 0, 1000, 125, 1000))
-        
+    # 残りのシートの背景色を黒に設定
+    requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 125, 1000))
+    
     return requests
 
 # メイン処理
