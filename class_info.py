@@ -13,7 +13,7 @@ ref = db.reference()
 
 # CoursesとStudentsのデータ取得
 courses_data = ref.child('Courses/course_id').get()
-students_data = ref.child('Students/student_info/student_index').get()
+students_data = ref.child('Students/student_info').get()
 
 # Classデータのための辞書
 class_data = {}
@@ -37,10 +37,10 @@ if courses_data:
 if students_data:
     for student_index, student_info in students_data.items():
         if len(student_index) >= 2:  # student_indexの最初の2文字を確認
-            class_index = student_index[:2]
-            # class_indexがclass_dataに存在する場合、student_indexを格納
-            if class_index in class_data:
-                class_data[class_index]['student_indices'].append(student_index)
+            for class_index in class_data.keys():
+                # class_indexが一致する場合、student_indexを格納
+                if student_index.startswith(class_index):
+                    class_data[class_index]['student_indices'].append(student_index)
 
 # データベースにClassデータを格納
 class_ref = ref.child('Class')
