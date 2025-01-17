@@ -47,11 +47,11 @@ class_ref = ref.child('Class')
 for class_index, data in class_data.items():
     # course_idをカンマ区切りの文字列に変換して保存
     course_ids_str = ', '.join(data['course_ids'])
-    class_ref.child(f'{class_index}/course_id').set(course_ids_str)
+    class_ref.child(f'class_index/{class_index}/course_id').set(course_ids_str)
     
     # student_indexをカンマ区切りの文字列に変換して保存
     student_indices_str = ', '.join(data['student_indices'])
-    class_ref.child(f'{class_index}/student_index').set(student_indices_str)
+    class_ref.child(f'class_index/{class_index}/student_index').set(student_indices_str)
 
 # class_indexの情報を設定
 class_index_data = ref.child('Class/class_index').get()
