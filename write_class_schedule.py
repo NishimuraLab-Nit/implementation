@@ -1,7 +1,6 @@
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
@@ -25,7 +24,7 @@ def get_google_sheets_service():
     authorized_http = AuthorizedHttp(google_creds, http=httplib2.Http(timeout=60))
     
     # サービスを初期化
-    return build('sheets', 'v4', credentials=google_creds, cache_discovery=False, http=authorized_http)
+    return build('sheets', 'v4', cache_discovery=False, http=authorized_http)
 
 # Firebaseからデータを取得
 def get_firebase_data(ref_path):
