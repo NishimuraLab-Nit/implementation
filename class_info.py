@@ -31,7 +31,7 @@ if courses_data:
                     'course_ids': [],
                     'student_indices': []
                 }
-            class_data[class_name]['course_ids'].append(index)
+            class_data[class_name]['course_ids'].append(str(index))  # course_idを文字列として格納
 
 # Studentsの処理
 if students_data:
@@ -45,12 +45,18 @@ if students_data:
 # データベースにClassデータを格納
 class_ref = ref.child('Class')
 for class_index, data in class_data.items():
-    # course_idを保存
-    for i, course_id in enumerate(data['course_ids'], start=1):
-        class_ref.child(f'{class_index}/course_id/{i}').set(course_id)
+    # course_idをカンマ区切りの文字列に変換して保存
+    course_ids_str = ', '.join(data['course_ids'])
+    class_ref.child(f'{class_index}/course_id').set(course_ids_str)
     
-    # student_indexを保存
-    for student_index in data['student_indices']:
-        class_ref.child(f'{class_index}/student_index/{student_index}').set(student_index)
+    # student_indexをカンマ区切りの文字列に変換して保存
+    student_indices_str = ', '.join(data['student_indices'])
+    class_ref.child(f'{class_index}/student_index').set(student_indices_str)
+
+# class_indexの情報を設定
+class_index_data = ref.child('Class/class_index').get()
+if class_index_data:
+    for class_index, class_info in class_index_data.items():
+        class_ref.child(f'class_index/{class_index}').set(class_info)
 
 print("データの処理と格納が完了しました。")
