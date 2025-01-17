@@ -122,11 +122,8 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
     return title
 
 # シート更新リクエストを準備
-def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
+def prepare_update_requests(sheet_id, student_names, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
-        print("学生名リストが空です。Firebaseから取得したデータを確認してください。")
-        return []
-    if not attendance_numbers:
         print("学生名リストが空です。Firebaseから取得したデータを確認してください。")
         return []
 
@@ -164,13 +161,13 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
                         "fields": "userEnteredFormat.horizontalAlignment"}},
         {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0,
-                                         "endColumnIndex": 126},
+                                         "endColumnIndex": 125},
                            "top": {"style": "SOLID", "width": 1},
                            "bottom": {"style": "SOLID", "width": 1},
                            "left": {"style": "SOLID", "width": 1},
                            "right": {"style": "SOLID", "width": 1}}},
         {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35,
-                                                     "startColumnIndex": 0, "endColumnIndex": 126}}}}
+                                                     "startColumnIndex": 0, "endColumnIndex": 125}}}}
                                                      ]
 
     # 学生名を記載
@@ -179,8 +176,6 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
 
     for i, name in enumerate(student_names):
         requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))
-    for j, number in enumerate(attendance_numbers):
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, number))
 
     # 日付と授業時限を設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
@@ -211,7 +206,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
 
     # 残りのシートの背景色を黒に設定
     requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
-    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 125, 1000))
     
     return requests
 
@@ -242,19 +237,13 @@ def main():
             if str(index).startswith(class_index) and student_data.get("student_name")
         ]
 
-        attendance_numbers = [
-            attendance_number_data.get("attendance_number")
-            for index, attendance_number_data in student_indices.items()
-
-        ]
-
         if not student_names:
             print(f"クラス {class_index} に一致する学生名が見つかりませんでした。")
             continue
         
         for month in range(1, 13):
             print(f"Processing month: {month} for class index: {class_index}")
-            requests = prepare_update_requests(class_index, student_names, attendance_numbers, month, sheets_service, spreadsheet_id)
+            requests = prepare_update_requests(class_index, student_names, month, sheets_service, spreadsheet_id)
             if not requests:
                 print(f"月 {month} のシートを更新するリクエストがありません。")
                 continue
