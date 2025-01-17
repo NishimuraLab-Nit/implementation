@@ -2,10 +2,12 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from datetime import datetime, timedelta
+from google.auth.transport.requests import Request
+from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
 import socket
+from datetime import datetime, timedelta
 
 # Firebaseの初期化
 def initialize_firebase():
@@ -18,8 +20,12 @@ def initialize_firebase():
 def get_google_sheets_service():
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
-    http = google_creds.authorize(httplib2.Http(timeout=60))  # タイムアウトを60秒に設定
-    return build('sheets', 'v4', credentials=google_creds, cache_discovery=False, http=http)
+
+    # 認証済みの HTTP クライアントを作成
+    authorized_http = AuthorizedHttp(google_creds, http=httplib2.Http(timeout=60))
+    
+    # サービスを初期化
+    return build('sheets', 'v4', credentials=google_creds, cache_discovery=False, http=authorized_http)
 
 # Firebaseからデータを取得
 def get_firebase_data(ref_path):
