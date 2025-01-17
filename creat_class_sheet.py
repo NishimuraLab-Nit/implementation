@@ -50,7 +50,7 @@ def create_spreadsheets_for_all_classes():
             # 新しいスプレッドシートを作成
             spreadsheet_body = {
                 'properties': {
-                    'title': f'{class_index} Class Spreadsheet'
+                    'title': f'{class_index}'
                 }
             }
             spreadsheet = sheets_service.spreadsheets().create(
