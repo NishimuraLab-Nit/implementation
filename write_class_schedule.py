@@ -95,6 +95,18 @@ def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_co
         }
     }
 
+# 黒背景リクエストを作成
+def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
+    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
+    return {
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                      "startColumnIndex": start_col, "endColumnIndex": end_col},
+            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
+            "fields": "userEnteredFormat.backgroundColor"
+        }
+    }
+    
 # ユニークなシート名を生成
 def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
     existing_sheets = execute_with_retry(
