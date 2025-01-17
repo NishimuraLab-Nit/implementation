@@ -155,7 +155,7 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 126}},
         create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 35),
         create_dimension_request(new_sheet_id, "COLUMNS", 1, 1, 100),
-        create_dimension_request(new_sheet_id, "COLUMNS", 1, 126, 35),
+        create_dimension_request(new_sheet_id, "COLUMNS", 2, 126, 35),
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         {"repeatCell": {"range": {"sheetId": new_sheet_id},
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
