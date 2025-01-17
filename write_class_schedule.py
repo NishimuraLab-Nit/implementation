@@ -114,22 +114,13 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
 
     # 以降のリクエストに新しいシートIDを使用
     requests = [
-        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 125}},
         create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
         create_dimension_request(new_sheet_id, "COLUMNS", 1, 125, 35),
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         {"repeatCell": {"range": {"sheetId": new_sheet_id},
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-                        "fields": "userEnteredFormat.horizontalAlignment"}},
-        {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0,
-                                         "endColumnIndex": 125},
-                           "top": {"style": "SOLID", "width": 1},
-                           "bottom": {"style": "SOLID", "width": 1},
-                           "left": {"style": "SOLID", "width": 1},
-                           "right": {"style": "SOLID", "width": 1}}},
-        {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35,
-                                                     "startColumnIndex": 0, "endColumnIndex": 125}}}}
-                                                     ]
+                        "fields": "userEnteredFormat.horizontalAlignment"}}
+    ]
 
     # 学生名を記載
     requests.append(create_cell_update_request(new_sheet_id, 2, 0, "学生名"))
@@ -144,7 +135,6 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     current_date = start_date
     start_column = 1  # 日付の開始列（1列目は学生名用）
     period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]  # 授業時限ラベル
-    period_index = 0  # 授業時限ラベルのインデックス
 
     while current_date <= end_date:
         weekday = current_date.weekday()
@@ -152,23 +142,19 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
         # 授業時限を記載（1列ごとに1つの時限）
-        while x < 5:
-            for y in range(1):
-                requests.append(create_cell_update_request(new_sheet_id, 1, start_column + y, period_labels[period_index]))
-            period_index = (period_index + 1) % len(period_labels)
-            x = x+1
-        return requests
-    
+        for period_index, period in enumerate(period_labels):
+            requests.append(create_cell_update_request(new_sheet_id, 1, start_column + period_index, period))
+
         # 土日のセルに色を付ける
         if weekday == 5:  # 土曜日
             color = {"red": 0.8, "green": 0.9, "blue": 1.0}  # 青色
-            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + 4, color))
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
         elif weekday == 6:  # 日曜日
             color = {"red": 1.0, "green": 0.8, "blue": 0.8}  # 赤色
-            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + 4, color))
+            requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
 
-        # 日付ごとに4列空ける
-        start_column += 4
+        # 日付ごとに時限分の列を進める
+        start_column += len(period_labels)
         current_date += timedelta(days=1)
 
     return requests
