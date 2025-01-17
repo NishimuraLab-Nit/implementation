@@ -252,7 +252,7 @@ def main():
         
         for month in range(1, 13):
             print(f"Processing month: {month} for class index: {class_index}")
-            requests = prepare_update_requests(class_index, student_names, month, sheets_service, spreadsheet_id)
+            requests = prepare_update_requests(class_index, student_names, attendance_number, month, sheets_service, spreadsheet_id)
             if not requests:
                 print(f"月 {month} のシートを更新するリクエストがありません。")
                 continue
