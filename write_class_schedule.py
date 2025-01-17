@@ -107,9 +107,9 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     ]
 
     # 学生名を記載
-    requests.append(create_cell_update_request(new_sheet_id, 2, 0, "学生名"))
+    requests.append(create_cell_update_request(new_sheet_id, 1, 0, "学生名"))
     for i, name in enumerate(student_names):
-        requests.append(create_cell_update_request(new_sheet_id, i + 3, 0, name))
+        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, name))
 
     # 日付と授業時限を設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
@@ -127,7 +127,7 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
         # 授業時限を記載（3列ごとに1つの時限）
-        for i in range(4):
+        for i in range(1):
             requests.append(create_cell_update_request(new_sheet_id, 1, start_column + i, period_labels[period_index]))
         period_index = (period_index + 1) % len(period_labels)
 
