@@ -1,6 +1,7 @@
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError  # 修正: HttpError をインポート
 from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
@@ -39,7 +40,7 @@ def execute_with_retry(request, retries=3, delay=5):
     for attempt in range(retries):
         try:
             return request.execute()
-        except (HttpError, socket.timeout) as e:
+        except (HttpError, socket.timeout) as e:  # 修正: HttpError をキャッチ
             print(f"リクエスト失敗 ({attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
@@ -50,7 +51,7 @@ def execute_with_retry(request, retries=3, delay=5):
 def create_cell_update_request(sheet_id, row_index, column_index, value):
     return {
         "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(value)}}]}],  # 修正: 数値を文字列に変換
             "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
             "fields": "userEnteredValue"
         }
