@@ -156,20 +156,20 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     # 必要な列をスプレッドシートに追加
     requests = [
         {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 125}},
-        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
+        create_dimension_request(new_sheet_id, "COLUMNS", 1, 1, 100),
         create_dimension_request(new_sheet_id, "COLUMNS", 1, 125, 35),
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         {"repeatCell": {"range": {"sheetId": new_sheet_id},
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
                         "fields": "userEnteredFormat.horizontalAlignment"}},
         {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0,
-                                         "endColumnIndex": 125},
+                                         "endColumnIndex": 126},
                            "top": {"style": "SOLID", "width": 1},
                            "bottom": {"style": "SOLID", "width": 1},
                            "left": {"style": "SOLID", "width": 1},
                            "right": {"style": "SOLID", "width": 1}}},
         {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35,
-                                                     "startColumnIndex": 0, "endColumnIndex": 125}}}}
+                                                     "startColumnIndex": 0, "endColumnIndex": 126}}}}
                                                      ]
 
     # 学生名を記載
@@ -186,7 +186,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
     current_date = start_date
-    start_column = 1
+    start_column = 2
     period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]
 
     while current_date <= end_date:
@@ -209,7 +209,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
 
     # 残りのシートの背景色を黒に設定
     requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
-    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 125, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
     
     return requests
 
