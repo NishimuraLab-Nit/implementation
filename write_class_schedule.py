@@ -127,12 +127,12 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
         # 授業時限を記載（3列ごとに1つの時限）
-        for i in range(3):
+        for i in range(4):
             requests.append(create_cell_update_request(new_sheet_id, 1, start_column + i, period_labels[period_index]))
         period_index = (period_index + 1) % len(period_labels)
 
         # 日付ごとに3列空ける
-        start_column += 3
+        start_column += 4
         current_date += timedelta(days=1)
 
     return requests
