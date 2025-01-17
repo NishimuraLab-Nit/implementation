@@ -124,7 +124,8 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
+    end_row = 125
+    
     current_date = start_date
     start_column = 1  # 日付の開始列（1列目は学生名用）
     period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]  # 授業時限ラベル
