@@ -55,6 +55,7 @@ for class_index, data in class_data.items():
     student_indices_str = ', '.join(data['student_indices'])
     class_ref.child(f'{class_index}/student_index').set(student_indices_str)
 
+
 # class_indexの情報を設定
 class_index_data = ref.child('Class/class_index').get()
 
