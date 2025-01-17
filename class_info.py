@@ -63,8 +63,8 @@ if class_index_data:
     for class_index, class_info in class_index_data.items():
         if class_index not in class_data:
             # クラスが存在しない場合、空のエントリを作成
-            class_ref.child(f'{class_index}/course_id').set('')
-            class_ref.child(f'{class_index}/student_index').set('')
+            class_ref.child(f'class_index/{class_index}/course_id').set('')
+            class_ref.child(f'class_index/{class_index}/student_index').set('')
         # class_indexの詳細を保存
         class_ref.child(f'class_index/{class_index}').set(class_info)
 else:
