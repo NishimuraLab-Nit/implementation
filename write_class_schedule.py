@@ -138,7 +138,15 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    requests = []
+    # 必要な列をスプレッドシートに追加
+    requests = [{
+        "appendDimension": {
+            "sheetId": new_sheet_id,
+            "dimension": "COLUMNS",
+            "length": 125  # 必要な列数
+        }
+    }]
+
     # 学生名を記載
     requests.append(create_cell_update_request(new_sheet_id, 2, 0, "学生名"))
     for i, name in enumerate(student_names):
@@ -172,6 +180,7 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         current_date += timedelta(days=1)
 
     return requests
+
 
 # メイン処理
 def main():
