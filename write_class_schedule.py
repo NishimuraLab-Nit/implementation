@@ -112,15 +112,24 @@ def prepare_update_requests(sheet_id, student_names, month, sheets_service, spre
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    # シートの初期設定リクエスト
+    # 以降のリクエストに新しいシートIDを使用
     requests = [
-        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 100}},
+        {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 125}},
         create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
+        create_dimension_request(new_sheet_id, "COLUMNS", 1, 32, 35),
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         {"repeatCell": {"range": {"sheetId": new_sheet_id},
                         "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
-                        "fields": "userEnteredFormat.horizontalAlignment"}}
-    ]
+                        "fields": "userEnteredFormat.horizontalAlignment"}},
+        {"updateBorders": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0,
+                                         "endColumnIndex": 125},
+                           "top": {"style": "SOLID", "width": 1},
+                           "bottom": {"style": "SOLID", "width": 1},
+                           "left": {"style": "SOLID", "width": 1},
+                           "right": {"style": "SOLID", "width": 1}}},
+        {"setBasicFilter": {"filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35,
+                                                     "startColumnIndex": 0, "endColumnIndex": 125}}}}
+                                                     ]
 
     # 学生名を記載
     requests.append(create_cell_update_request(new_sheet_id, 2, 0, "学生名"))
