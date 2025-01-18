@@ -42,7 +42,7 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
 
 # 黒背景リクエストを作成
 def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
-    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0, "alpha": 1.0}  # アルファ値を追加
+    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0, "alpha": 1.0}
     return {
         "repeatCell": {
             "range": {
@@ -92,23 +92,29 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
         index += 1
     return f"{base_title}-{index}"
 
-# Firebaseからデータを取得してコース名を生成する関数（修正版）
-def get_course_names(student_index):
-    student_course_ids_str = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-    if not student_course_ids_str:
-        print(f"学生インデックス {student_index} に関連付けられたコースが見つかりません。")
+# Firebaseからデータを取得してコース名を生成する関数
+def get_course_names_from_class(class_name):
+    # class_nameに対応するclass_idを取得
+    classes = get_firebase_data('Classes')
+    if not classes or class_name not in classes:
+        print(f"Class name '{class_name}' が見つかりませんでした。")
         return []
 
-    student_course_ids = [cid.strip() for cid in student_course_ids_str.split(',') if cid.strip().isdigit()]
-    courses = get_firebase_data('Courses/course_id')
-    if not courses or not isinstance(courses, list):
-        print("コースデータが不正です。")
+    class_id = classes[class_name].get('class_id')
+    if not class_id:
+        print(f"Class name '{class_name}' に対応するclass_idが見つかりません。")
+        return []
+
+    # class_idに対応するcourse_nameを取得
+    course_ids = get_firebase_data(f'Students/enrollment/class_id/{class_id}/course_id')
+    if not course_ids:
+        print(f"Class ID '{class_id}' に対応するコースが見つかりません。")
         return []
 
     course_names = []
-    for cid in student_course_ids:
-        if int(cid) < len(courses) and courses[int(cid)]:
-            course_data = courses[int(cid)]
+    for course_id in course_ids:
+        course_data = get_firebase_data(f'Courses/{course_id}')
+        if course_data:
             course_name = course_data.get('course_name')
             if course_name:
                 course_names.append(course_name)
@@ -180,36 +186,25 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    student_indices = get_firebase_data('Students/student_info/student_index')
-    if not student_indices or not isinstance(student_indices, dict):
-        print("Firebaseから学生インデックスを取得できませんでした。データ構造を確認してください。")
+    class_name = input("Enter class name: ")
+    course_names = get_course_names_from_class(class_name)
+    if not course_names:
+        print(f"Class name '{class_name}' に関連付けられたコース名が見つかりませんでした。")
         return
 
-    for student_index, student_data in student_indices.items():
-        print(f"Processing student index: {student_index}")
-
-        sheet_id = student_data.get('sheet_id')
-        if not sheet_id:
-            print(f"学生インデックス {student_index} に対応するスプレッドシートIDが見つかりません。")
+    spreadsheet_id = input("Enter the Google Spreadsheet ID: ")
+    for month in range(1, 13):
+        print(f"Processing month: {month} for class: {class_name}")
+        requests = prepare_update_requests(None, course_names, month, 2025, sheets_service, spreadsheet_id)
+        if not requests:
+            print(f"月 {month} のシートを更新するリクエストがありません。")
             continue
 
-        course_names = get_course_names(student_index)
-        if not course_names:
-            print(f"学生インデックス {student_index} のコース名が見つかりませんでした。")
-            continue
-
-        for month in range(1, 13):
-            print(f"Processing month: {month} for student index: {student_index}")
-            requests = prepare_update_requests(sheet_id, course_names, month, 2025, sheets_service, sheet_id)
-            if not requests:
-                print(f"月 {month} のシートを更新するリクエストがありません。")
-                continue
-
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=sheet_id,
-                body={'requests': requests}
-            ).execute()
-            print(f"月 {month} のシートを正常に更新しました。")
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={'requests': requests}
+        ).execute()
+        print(f"月 {month} のシートを正常に更新しました。")
 
 if __name__ == "__main__":
     main()
