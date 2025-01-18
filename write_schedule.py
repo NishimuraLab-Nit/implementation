@@ -182,11 +182,24 @@ def main():
             print(f"学生インデックス {student_index} のシートIDが見つかりません。スキップします。")
             continue
 
-        # 学生の登録コースを取得
-        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-        if not isinstance(student_course_ids, list):
+        # Firebaseからデータを取得
+        data = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
+    
+        # `student_index` から学生のコースID情報を取得
+        student_data = data.get("enrollment", {}).get("student_index", {}).get(student_index, {})
+        course_ids_str = student_data.get("course_id")
+    
+        # コースIDが文字列で取得できた場合
+        if course_ids_str:
+            # カンマで分割してリストに変換
+            student_course_ids = [course_id.strip() for course_id in course_ids_str.split(",")]
+        else:
+            # データが不正な場合
             print(f"学生インデックス {student_index} の登録コースが不正です。スキップします。")
-            continue
+            return None
+
+        # 正常に取得できた場合の処理
+        print(f"学生インデックス {student_index} の登録コース: {student_course_ids}")
 
         # コースデータを取得
         courses = get_firebase_data('Courses/course_id')
