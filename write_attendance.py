@@ -4,20 +4,18 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Firebaseアプリの初期化（未初期化の場合のみ実行）
+# Firebaseアプリの初期化
 def initialize_firebase():
     if not firebase_admin._apps:
         try:
-            # サービスアカウントの認証情報を設定
             cred = credentials.Certificate('/tmp/firebase_service_account.json')
-            # Firebaseアプリを初期化
             firebase_admin.initialize_app(cred, {
                 'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
             })
         except Exception as e:
             raise RuntimeError(f"Firebaseの初期化に失敗しました: {e}")
 
-# Google Sheets API用のスコープを設定
+# Google Sheets APIの初期化
 def initialize_gspread():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     try:
@@ -44,8 +42,9 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
         exit_time_str = attendance.get(exit_label, {}).get('read_datetime')
         
         if not entry_time_str:
+            print(f"{entry_label} に入室データが存在しません。スキップします。")
             return False  # 入室データがない場合スキップ
-        
+
         # 入室時間を日付オブジェクトに変換
         entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
         entry_minutes = entry_time.hour * 60 + entry_time.minute
@@ -58,6 +57,10 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
 
         # コースのスケジュール情報を取得
         schedule = course.get('schedule', {})
+        if not schedule or 'time' not in schedule:
+            print(f"コースのスケジュール情報が見つかりません。スキップします。")
+            return False
+
         start_time_str, end_time_str = schedule.get('time', '').split('~')
         start_time = datetime.datetime.strptime(start_time_str, "%H:%M")
         end_time = datetime.datetime.strptime(end_time_str, "%H:%M")
