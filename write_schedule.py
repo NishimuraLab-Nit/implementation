@@ -170,20 +170,31 @@ def main():
     # Firebaseからデータを取得
     student_indices = get_firebase_data('Students/student_info/student_index')
     if not student_indices or not isinstance(student_indices, dict):
-        print("Firebaseから学生インデックスを取得できませんでした。")
-        return
+        print("Firebaseから学生インデックスを取得できませんでした。空のデータとして処理を続行します。")
+        student_indices = {}
 
     for student_index, student_data in student_indices.items():
         print(f"Processing student index: {student_index}")
 
+        # シートIDを取得
         sheet_id = student_data.get('sheet_id')
-        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-        courses = get_firebase_data('Courses/course_id')
-        if not sheet_id or not isinstance(student_course_ids, list) or not isinstance(courses, list):
-            print(f"学生インデックス {student_index} のデータが不正です。")
+        if not sheet_id:
+            print(f"学生インデックス {student_index} のシートIDが見つかりません。スキップします。")
             continue
 
-        # Coursesデータを辞書化して不正データ（Noneや存在しない要素）を除外
+        # 学生の登録コースを取得
+        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
+        if not isinstance(student_course_ids, list):
+            print(f"学生インデックス {student_index} の登録コースが不正です。スキップします。")
+            continue
+
+        # コースデータを取得
+        courses = get_firebase_data('Courses/course_id')
+        if not isinstance(courses, list):
+            print("Courses データが不正です。処理を中止します。")
+            continue
+
+        # Coursesデータを辞書化
         courses_dict = {
             str(index): course
             for index, course in enumerate(courses)
@@ -200,10 +211,11 @@ def main():
             else:
                 print(f"コースID {cid} がCoursesデータに存在しません。")
 
-        # エラーの場合の処理
         if not course_names:
             print(f"学生インデックス {student_index} のコース名が見つかりませんでした。")
             continue
+
+        # 各月の処理
         for month in range(1, 13):
             print(f"Processing month: {month} for student index: {student_index}")
             requests = prepare_update_requests(sheet_id, course_names, month, sheets_service, sheet_id)
