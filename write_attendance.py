@@ -37,12 +37,13 @@ def get_data_from_firebase(path):
         print(f"Firebaseからデータを取得できません（パス: {path}）: {e}")
         return {}
 
-# 出席を確認しマークする関数
 def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id):
     try:
         # 入室時間を取得
         entry_time_str = attendance.get(entry_label, {}).get('read_datetime')
-        exit_time_str = attendance.get('exit', {}).get('read_datetime')
+        # exit1 または entry_label に対応する exit を取得
+        exit_label = entry_label.replace('entry', 'exit')  # entry1 -> exit1
+        exit_time_str = attendance.get(exit_label, {}).get('read_datetime')
 
         # 入退室データがない場合はスキップ
         if not entry_time_str:
@@ -85,43 +86,32 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
         # 正しいセル位置を計算
         row = int(course_id) + 1  # コースIDが1行目から開始すると仮定
 
-        # 仕様に基づく判定ロジック
-        if entry_minutes > end_minutes:  # entryが終了時間を過ぎていた場合
+        # 出席判定ロジック
+        if entry_minutes <= start_minutes + 5 and (exit_minutes is None or exit_minutes >= end_minutes - 5):
+            # 正常出席
+            sheet_to_update.update_cell(row, column, "〇")
+            print(f"{course['class_name']} - {entry_label}: 正常出席。マーク: 〇")
+            return True
+        elif entry_minutes > end_minutes:
+            # 遅刻または終了時間を過ぎている
             sheet_to_update.update_cell(row, column, "×")
             print(f"{course['class_name']} - {entry_label}: 終了時間を過ぎています。マーク: ×")
             return True
-
-        if exit_minutes is not None:
-            if exit_minutes <= start_minutes + 5 and entry_minutes > start_minutes + 5:
-                # exitが5分以内 & entryが開始時間の5分以内でない場合
-                delay_minutes = entry_minutes - start_minutes
-                sheet_to_update.update_cell(row, column, f"△遅{delay_minutes}分")
-                print(f"{course['class_name']} - {entry_label}: 遅刻 {delay_minutes}分。マーク: △遅")
-                return True
-
-            if entry_minutes <= start_minutes + 5 and exit_minutes < end_minutes - 5:
-                # entryが5分以内 & exitが終了時間の5分以内でない場合
-                early_minutes = end_minutes - exit_minutes
-                sheet_to_update.update_cell(row, column, f"△早{early_minutes}分")
-                print(f"{course['class_name']} - {entry_label}: 早退 {early_minutes}分。マーク: △早")
-                return True
-
-        # entryしかない場合
-        if not exit_time_str:
-            # 終了時間をexitとして保存
-            attendance['exit'] = {'read_datetime': entry_time.strftime("%Y-%m-%d ") + end_time.strftime("%H:%M:%S")}
-            sheet_to_update.update_cell(row, column, "〇")
-            print(f"{course['class_name']} - {entry_label}: 退室データなし。自動補完でマーク: 〇")
+        elif exit_minutes is not None and exit_minutes < end_minutes - 5:
+            # 早退
+            early_minutes = end_minutes - exit_minutes
+            sheet_to_update.update_cell(row, column, f"△早{early_minutes}分")
+            print(f"{course['class_name']} - {entry_label}: 早退 {early_minutes}分。マーク: △早")
             return True
-
-        # 上記以外の場合は〇をマーク
-        sheet_to_update.update_cell(row, column, "〇")
-        print(f"{course['class_name']} - {entry_label}: 正常出席。マーク: 〇")
-        return True
+        else:
+            # 遅刻
+            delay_minutes = max(0, entry_minutes - start_minutes)
+            sheet_to_update.update_cell(row, column, f"△遅{delay_minutes}分")
+            print(f"{course['class_name']} - {entry_label}: 遅刻 {delay_minutes}分。マーク: △遅")
+            return True
     except Exception as e:
         print(f"出席の確認中にエラーが発生しました: {e}")
         return False
-
 # 出席を記録する関数
 def record_attendance(students_data, courses_data):
     try:
