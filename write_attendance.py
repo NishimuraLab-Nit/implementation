@@ -106,7 +106,6 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
     print(f"{course['class_name']} - {entry_label}: 正常出席。マーク: 〇")
     return True
 
-# 出席を記録する関数
 def record_attendance(students_data, courses_data):
     # 各データを取得
     attendance_data = students_data.get('attendance', {})
@@ -136,8 +135,11 @@ def record_attendance(students_data, courses_data):
 
         # 受講しているコースを確認
         course_ids = student_info_data.get("student_index", {}).get(student_index, {}).get('course_id', [])
-        for course_id in course_ids.split(", "):  # コースIDはカンマ区切りで格納されている
-            course = courses_list[int(course_id)] if course_id.isdigit() else None
+        for course_id in course_ids:  # course_ids はリスト型
+            if isinstance(course_id, str) and course_id.isdigit():
+                course = courses_list[int(course_id)]
+            else:
+                course = None
             if not course:
                 print(f"コースID {course_id} に対応する授業が見つかりません。")
                 continue
