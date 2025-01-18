@@ -20,100 +20,33 @@ def get_google_sheets_service():
 def get_firebase_data(ref_path):
     return db.reference(ref_path).get()
 
-# セル更新リクエストを作成
-def create_cell_update_request(sheet_id, row_index, column_index, value):
-    return {
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": value}}]}],
-            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
-            "fields": "userEnteredValue"
-        }
-    }
-
-# 列や行のプロパティ設定リクエストを作成
-def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
-    return {
-        "updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
-            "properties": {"pixelSize": pixel_size},
-            "fields": "pixelSize"
-        }
-    }
-
-# 黒背景リクエストを作成
-def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
-    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0, "alpha": 1.0}
-    return {
-        "repeatCell": {
-            "range": {
-                "sheetId": sheet_id,
-                "startRowIndex": start_row,
-                "endRowIndex": end_row,
-                "startColumnIndex": start_col,
-                "endColumnIndex": end_col
-            },
-            "cell": {
-                "userEnteredFormat": {
-                    "backgroundColor": black_color
-                }
-            },
-            "fields": "userEnteredFormat.backgroundColor"
-        }
-    }
-
-# 新しいシート作成リクエストを作成する関数
-def create_sheet_request(sheet_title):
-    return {
-        "addSheet": {
-            "properties": {
-                "title": sheet_title,
-                "gridProperties": {
-                    "rowCount": 1000,
-                    "columnCount": 32
-                }
-            }
-        }
-    }
-
-# Google Sheetsのシートをすべて取得
-def get_all_sheets(sheets_service, spreadsheet_id):
-    spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-    sheets = spreadsheet.get('sheets', [])
-    return [sheet['properties']['title'] for sheet in sheets]
-
-# シート名の重複を避けるためにユニークな名前を生成
-def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
-    existing_titles = get_all_sheets(sheets_service, spreadsheet_id)
-    if base_title not in existing_titles:
-        return base_title
-
-    index = 1
-    while f"{base_title}-{index}" in existing_titles:
-        index += 1
-    return f"{base_title}-{index}"
-
-# Firebaseからデータを取得してコース名を生成する関数
+# クラス名からクラスIDと対応するコース名を取得
 def get_course_names_from_class(class_name):
-    # class_nameに対応するclass_idを取得
-    classes = get_firebase_data('Classes')
-    if not classes or class_name not in classes:
-        print(f"Class name '{class_name}' が見つかりませんでした。")
+    # クラス名からクラスIDを取得
+    class_data = get_firebase_data('Students/student_info/student_index')
+    if not class_data or not isinstance(class_data, dict):
+        print("Firebaseからクラスデータを取得できませんでした。")
         return []
 
-    class_id = classes[class_name].get('class_id')
+    class_id = None
+    for student_index, student_info in class_data.items():
+        if student_info.get('class_name') == class_name:
+            class_id = student_info.get('class_id')
+            break
+
     if not class_id:
-        print(f"Class name '{class_name}' に対応するclass_idが見つかりません。")
+        print(f"指定したクラス名 '{class_name}' に対応するクラスIDが見つかりませんでした。")
         return []
 
-    # class_idに対応するcourse_nameを取得
-    course_ids = get_firebase_data(f'Students/enrollment/class_id/{class_id}/course_id')
+    # クラスIDからコース名を取得
+    course_ids = get_firebase_data(f"Students/student_info/student_index/class_id={class_id}/course_id")
     if not course_ids:
-        print(f"Class ID '{class_id}' に対応するコースが見つかりません。")
+        print(f"クラスID {class_id} に関連付けられたコースが見つかりません。")
         return []
 
     course_names = []
-    for course_id in course_ids:
-        course_data = get_firebase_data(f'Courses/{course_id}')
+    for cid in course_ids:
+        course_data = get_firebase_data(f"Courses/{cid}")
         if course_data:
             course_name = course_data.get('course_name')
             if course_name:
@@ -129,7 +62,8 @@ def prepare_update_requests(sheet_id, course_names, month, year, sheets_service,
 
     # ユニークなシート名を生成
     base_title = f"{year}-{str(month).zfill(2)}"
-    sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
+    existing_titles = get_all_sheets(sheets_service, spreadsheet_id)
+    sheet_title = generate_unique_sheet_title(existing_titles, base_title)
 
     # 新しいシートを作成するリクエスト
     add_sheet_request = create_sheet_request(sheet_title)
@@ -186,16 +120,21 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    class_name = input("Enter class name: ")
+    # ユーザーが指定したクラス名
+    class_name = input("クラス名を入力してください: ").strip()
+
+    # クラス名からコース名を取得
     course_names = get_course_names_from_class(class_name)
     if not course_names:
-        print(f"Class name '{class_name}' に関連付けられたコース名が見つかりませんでした。")
+        print(f"クラス名 '{class_name}' のコース名が見つかりませんでした。")
         return
 
-    spreadsheet_id = input("Enter the Google Spreadsheet ID: ")
+    # スプレッドシートIDを指定
+    spreadsheet_id = "YOUR_SPREADSHEET_ID"
+
     for month in range(1, 13):
         print(f"Processing month: {month} for class: {class_name}")
-        requests = prepare_update_requests(None, course_names, month, 2025, sheets_service, spreadsheet_id)
+        requests = prepare_update_requests(class_name, course_names, month, 2025, sheets_service, spreadsheet_id)
         if not requests:
             print(f"月 {month} のシートを更新するリクエストがありません。")
             continue
