@@ -114,14 +114,15 @@ def record_attendance(students_data, courses_data):
     courses_list = courses_data.get('course_id', [])
 
     # 各学生の出席を確認
-    for student_id, attendance in attendance_data.items():
+    for student_id, attendance in attendance_data.get("students_id", {}).items():
         # 学生情報を取得
-        student_info = student_info_data.get(student_id)
+        student_info = student_info_data.get("student_id", {}).get(student_id)
         if not student_info:
             print(f"学生 {student_id} の情報が見つかりません。")
             continue
 
-        sheet_id = student_info.get('sheet_id')
+        student_index = student_info.get("student_index")
+        sheet_id = student_info_data.get("student_index", {}).get(student_index, {}).get("sheet_id")
         if not sheet_id:
             print(f"学生 {student_id} に対応するスプレッドシートIDが見つかりません。")
             continue
@@ -134,9 +135,9 @@ def record_attendance(students_data, courses_data):
             continue
 
         # 受講しているコースを確認
-        course_ids = student_info.get('course_id', [])
-        for course_id in course_ids:
-            course = courses_list.get(course_id)
+        course_ids = student_info_data.get("student_index", {}).get(student_index, {}).get('course_id', [])
+        for course_id in course_ids.split(", "):  # コースIDはカンマ区切りで格納されている
+            course = courses_list[int(course_id)] if course_id.isdigit() else None
             if not course:
                 print(f"コースID {course_id} に対応する授業が見つかりません。")
                 continue
