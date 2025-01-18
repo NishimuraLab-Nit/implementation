@@ -42,12 +42,21 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
 
 # 黒背景リクエストを作成
 def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
-    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
+    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0, "alpha": 1.0}  # アルファ値を追加
     return {
         "repeatCell": {
-            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
-                      "startColumnIndex": start_col, "endColumnIndex": end_col},
-            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_col,
+                "endColumnIndex": end_col
+            },
+            "cell": {
+                "userEnteredFormat": {
+                    "backgroundColor": black_color
+                }
+            },
             "fields": "userEnteredFormat.backgroundColor"
         }
     }
@@ -105,7 +114,7 @@ def get_course_names(student_index):
                 course_names.append(course_name)
 
     return course_names
-    
+
 # シート更新リクエストを準備
 def prepare_update_requests(sheet_id, course_names, month, year, sheets_service, spreadsheet_id):
     if not course_names:
@@ -150,6 +159,9 @@ def prepare_update_requests(sheet_id, course_names, month, year, sheets_service,
     for i, name in enumerate(course_names):
         requests.append(create_cell_update_request(new_sheet_id, i + 1, 0, name))
 
+    # 黒背景を適用
+    requests.append(create_black_background_request(new_sheet_id, 1, len(course_names) + 1, 1, 32))
+
     # 日付と土日セルの色付け
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
@@ -163,7 +175,7 @@ def prepare_update_requests(sheet_id, course_names, month, year, sheets_service,
 
     return requests
 
-# メイン処理（修正）
+# メイン処理
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
@@ -201,4 +213,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
