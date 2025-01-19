@@ -114,7 +114,7 @@ def record_attendance(students_data, courses_data):
                     print(f"シート '{entry_month}' が見つかりません。スキップします。")
                     break
 
-                row = int(course_id) + 1
+                row = (course_id_int * 10) + entry_index
                 column = entry_time.day + 1
                 sheet_to_update.update_cell(row, column, result)
                 print(f"出席記録: {course['class_name']} - {result}")
