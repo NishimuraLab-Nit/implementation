@@ -83,22 +83,29 @@ def save_to_firebase(path, data, description):
         print(f"{description} をFirebaseに保存しました: {data}")
     except Exception as e:
         print(f"{description} の保存に失敗しました: {e}")
+
 # Firebaseに退室時間を保存する関数
 def save_exit_time_to_firebase(student_id, course_id, exit_time):
-    print(f"Firebaseに退室時間を保存します: 学生ID={student_id}, コースID={course_id}, 退室時間={exit_time}")
-    path = f"Students/attendance/students_id/{student_id}/exit{course_id}"
-    ref = db.reference(path)
-    ref.set({'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")})
-    print("退室時間をFirebaseに保存しました。")
+    try:
+        print(f"Firebaseに退室時間を保存します: 学生ID={student_id}, コースID={course_id}, 退室時間={exit_time}")
+        path = f"Students/attendance/students_id/{student_id}/exit{course_id}"
+        ref = db.reference(path)
+        ref.set({'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")})
+        print("退室時間をFirebaseに保存しました。")
+    except Exception as e:
+        print(f"退室時間の保存に失敗しました: {e}")
 
 # Firebaseに入室時間2を保存する関数
 def save_entry2_time_to_firebase(student_id, course_id, entry2_time):
-    print(f"Firebaseに入室時間2を保存します: 学生ID={student_id}, コースID={course_id}, 入室時間2={entry2_time}")
-    path = f"Students/attendance/students_id/{student_id}/entry2{course_id}"
-    ref = db.reference(path)
-    ref.set({'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")})
-    print("入室時間2をFirebaseに保存しました。")
-  
+    try:
+        print(f"Firebaseに入室時間2を保存します: 学生ID={student_id}, コースID={course_id}, 入室時間2={entry2_time}")
+        path = f"Students/attendance/students_id/{student_id}/entry2{course_id}"
+        ref = db.reference(path)
+        ref.set({'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")})
+        print("入室時間2をFirebaseに保存しました。")
+    except Exception as e:
+        print(f"入室時間2の保存に失敗しました: {e}")
+
 # 出席を記録する関数
 def record_attendance(students_data, courses_data):
     print("\n=== 出席記録を開始します ===")
@@ -122,7 +129,7 @@ def record_attendance(students_data, courses_data):
 
         for course_index, course_id in enumerate(course_ids, start=1):
             print(f"コース {course_id} の処理を開始します。")
-            course = courses_list[int(course_id)]
+            course = courses_list[int(course_id)] if course_id.isdigit() and int(course_id) < len(courses_list) else None
             if not course:
                 print(f"無効なコースID {course_id} が見つかりました。スキップします。")
                 continue
@@ -148,21 +155,27 @@ def record_attendance(students_data, courses_data):
                 print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
                 continue
 
-            entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-            entry_minutes = entry_time.hour * 60 + entry_time.minute
+            try:
+                entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+                entry_minutes = entry_time.hour * 60 + entry_time.minute
+            except ValueError as e:
+                print(f"入室時刻の解析に失敗しました: {entry_time_str} ({e})。スキップします。")
+                continue
 
             if not exit_time_str:
                 print(f"学生 {student_id} の退室時間が見つかりません。デフォルトの退室時間を設定します。")
                 exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
                 entry2_time = entry_time.replace(hour=(end_minutes + 10) // 60, minute=(end_minutes + 10) % 60)
-                save_to_firebase(f"Students/attendance/students_id/{student_id}/exit{course_id}",
-                                 {'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")}, "退室時間")
-                save_to_firebase(f"Students/attendance/students_id/{student_id}/entry{course_id}",
-                                 {'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")}, "入室時間2")
+                save_exit_time_to_firebase(student_id, course_id, exit_time)
+                save_entry2_time_to_firebase(student_id, course_id, entry2_time)
                 exit_minutes = end_minutes
             else:
-                exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
-                exit_minutes = exit_time.hour * 60 + exit_time.minute
+                try:
+                    exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+                    exit_minutes = exit_time.hour * 60 + exit_time.minute
+                except ValueError as e:
+                    print(f"退室時刻の解析に失敗しました: {exit_time_str} ({e})。デフォルト値を使用します。")
+                    exit_minutes = end_minutes
 
             result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
