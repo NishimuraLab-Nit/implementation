@@ -21,67 +21,45 @@ def get_data_from_firebase(path):
     ref = db.reference(path)
     return ref.get()
 
+# 出席判定ロジック
+def determine_attendance_status(entry_time, exit_time, start_time, end_time):
+    start_plus_5 = start_time + datetime.timedelta(minutes=5)
+    end_minus_5 = end_time - datetime.timedelta(minutes=5)
+    end_plus_15 = end_time + datetime.timedelta(minutes=15)
+
+    if entry_time <= start_plus_5:
+        if exit_time is None or exit_time >= end_minus_5:
+            return "○"  # 正常出席
+        elif exit_time < end_minus_5:
+            early_minutes = (end_minus_5 - exit_time).seconds // 60
+            return f"△早{early_minutes}分"  # 早退
+    elif entry_time > start_plus_5:
+        if exit_time is None or exit_time >= end_minus_5:
+            late_minutes = (entry_time - start_plus_5).seconds // 60
+            return f"△遅{late_minutes}分"  # 遅刻
+    if entry_time > end_time:
+        return "×"  # 欠席
+    if entry_time <= start_plus_5 and exit_time >= end_plus_15:
+        return "○ 同教室"  # 同教室判定
+    return "×"  # デフォルトは欠席
+
 # 出席を確認しマークする関数
 def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id):
     entry_time_str = attendance.get(entry_label, {}).get('read_datetime')
-    exit_time_str = attendance.get(entry_label.replace("entry", "exit"), {}).get('read_datetime')
-
+    exit_time_str = attendance.get(entry_label, {}).get('exit_datetime')
     if not entry_time_str:
         return False
 
     entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-    exit_time = None
-    if exit_time_str:
-        exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+    exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S") if exit_time_str else None
 
-    entry_month = entry_time.strftime("%Y-%m")
-    entry_day = entry_time.strftime("%A")
-    entry_minutes = entry_time.hour * 60 + entry_time.minute
-
-    # コースのスケジュール情報を取得
     start_time_str, end_time_str = course.get('schedule', {}).get('time', '').split('~')
     start_time = datetime.datetime.strptime(start_time_str, "%H:%M")
     end_time = datetime.datetime.strptime(end_time_str, "%H:%M")
-    start_minutes = start_time.hour * 60 + start_time.minute
-    end_minutes = end_time.hour * 60 + end_time.minute
 
-    # 開始時間と終了時間に基づく条件判定
-    def calc_status():
-        nonlocal exit_time
+    status = determine_attendance_status(entry_time, exit_time, start_time, end_time)
 
-        # 出席判定
-        if abs(entry_minutes - start_minutes) <= 5:
-            if exit_time:
-                exit_minutes = exit_time.hour * 60 + exit_time.minute
-                if exit_minutes >= end_minutes - 5:
-                    return "○"  # 正常出席
-                elif exit_minutes < end_minutes - 5:
-                    early_leave_minutes = (end_minutes - 5) - exit_minutes
-                    return f"△早{early_leave_minutes}分"  # 早退
-            else:
-                exit_time = end_time + datetime.timedelta(minutes=15)  # デフォルト終了時間
-                return "○"  # 正常出席
-
-        # 遅刻判定
-        elif entry_minutes > start_minutes + 5:
-            if exit_time:
-                exit_minutes = exit_time.hour * 60 + exit_time.minute
-                if exit_minutes >= end_minutes - 5:
-                    late_minutes = entry_minutes - (start_minutes + 5)
-                    return f"△遅{late_minutes}分"  # 遅刻
-            else:
-                return "×"  # 欠席
-
-        # 欠席判定
-        elif entry_minutes > end_minutes:
-            return "×"  # 欠席
-
-        return "×"  # デフォルト欠席
-
-    # ステータスを計算
-    status = calc_status()
-
-    # シート更新
+    entry_month = entry_time.strftime("%Y-%m")
     try:
         sheet_to_update = sheet.worksheet(entry_month)
     except gspread.exceptions.WorksheetNotFound:
@@ -91,9 +69,8 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
     row = int(course_id) + 1
     column = entry_time.day + 1
     sheet_to_update.update_cell(row, column, status)
-    print(f"出席確認: {course['class_name']} - {entry_label} - シート: {entry_month} - ステータス: {status}")
-
-    return status
+    print(f"出席記録: {course['class_name']} - {entry_label} - ステータス: {status}")
+    return True
 
 # 出席を記録する関数
 def record_attendance(students_data, courses_data):
@@ -110,7 +87,7 @@ def record_attendance(students_data, courses_data):
 
         student_index = student_info.get('student_index')
         enrollment_info = enrollment_data.get(student_index, {})
-        course_ids = enrollment_info.get('course_id', [])  # 修正: リストとして扱う
+        course_ids = enrollment_info.get('course_id', [])
 
         sheet_id = student_index_data.get(student_index, {}).get('sheet_id')
         if not sheet_id:
@@ -133,9 +110,11 @@ def record_attendance(students_data, courses_data):
                 print(f"無効なコースID {course_id} が見つかりました。スキップします。")
                 continue
 
-            for entry_label in ['entry1', 'entry2']:
-                if entry_label in attendance:
-                    check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
+            if check_and_mark_attendance(attendance, course, sheet, 'entry1', course_id):
+                continue
+
+            if 'entry2' in attendance:
+                check_and_mark_attendance(attendance, course, sheet, 'entry2', course_id)
 
 # Firebaseからデータを取得し、出席を記録
 students_data = get_data_from_firebase('Students')
