@@ -24,6 +24,7 @@ client = gspread.authorize(creds)
 def get_data_from_firebase(path):
     ref = db.reference(path)
     return ref.get()
+
 # 出席を確認しマークする関数
 def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id):
     # 入室時間を取得
@@ -40,8 +41,8 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
     if course.get('schedule', {}).get('day') != entry_day:
         return False
 
-    # コースの開始時間を取得
-    start_time_str = course.get('schedule', {}).get('time', '').split('-')[0]
+    # コースの開始時間を取得し、チルダを削除して処理
+    start_time_str = course.get('schedule', {}).get('time', '').split('-')[0].replace('~', '').strip()
     start_time = datetime.datetime.strptime(start_time_str, "%H:%M")
     start_minutes = start_time.hour * 60 + start_time.minute
 
