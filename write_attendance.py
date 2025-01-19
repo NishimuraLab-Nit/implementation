@@ -40,14 +40,14 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, exit_label
 
     # 欠席判定
     if entry_time >= end_time:
-        result = "×"  # 欠席
+        result = "×"
 
     # 正常出席判定
     elif entry_time <= start_time + datetime.timedelta(minutes=5):
         if exit_time and exit_time <= end_time + datetime.timedelta(minutes=5):
-            result = "○"  # 正常出席
+            result = "○"
         elif exit_time:
-            exit_time = end_time  # 退室時間未入力時の処理
+            exit_time = end_time
 
     # 早退判定
     elif entry_time <= start_time + datetime.timedelta(minutes=5) and exit_time and exit_time < end_time - datetime.timedelta(minutes=5):
@@ -61,12 +61,14 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, exit_label
 
     # 次のコースへ移行
     if next_course:
-        next_start_time_str, next_end_time_str = next_course.get('schedule', {}).get('time', '').split('~')
-        next_start_time = datetime.datetime.strptime(next_start_time_str.strip(), "%H:%M")
-        next_end_time = datetime.datetime.strptime(next_end_time_str.strip(), "%H:%M")
+        next_time = next_course.get('schedule', {}).get('time', '')
+        if '~' in next_time:  # フォーマットを確認
+            next_start_time_str, next_end_time_str = next_time.split('~')
+            next_start_time = datetime.datetime.strptime(next_start_time_str.strip(), "%H:%M")
+            next_end_time = datetime.datetime.strptime(next_end_time_str.strip(), "%H:%M")
 
-        if exit_time and exit_time >= next_start_time - datetime.timedelta(minutes=5):
-            result = "○"  # 次のコースも正常出席
+            if exit_time and exit_time >= next_start_time - datetime.timedelta(minutes=5):
+                result = "○"
 
     try:
         entry_month = entry_time.strftime("%Y-%m")
