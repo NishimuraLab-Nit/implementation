@@ -4,7 +4,6 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-
 # Firebaseアプリの初期化（未初期化の場合のみ実行）
 if not firebase_admin._apps:
     print("Firebaseの初期化を実行します。")
@@ -13,10 +12,10 @@ if not firebase_admin._apps:
         firebase_admin.initialize_app(cred, {
             'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
         })
+        print("Firebaseの初期化に成功しました。")
     except Exception as e:
         print(f"Firebaseの初期化に失敗しました: {e}")
         raise
-
 
 # Google Sheets API用のスコープを設定
 try:
@@ -24,10 +23,10 @@ try:
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
     client = gspread.authorize(creds)
+    print("Google Sheets APIの初期化に成功しました。")
 except Exception as e:
     print(f"Google Sheets APIの初期化に失敗しました: {e}")
     raise
-
 
 # Firebaseからデータを取得する関数
 def get_data_from_firebase(path):
@@ -36,13 +35,13 @@ def get_data_from_firebase(path):
         ref = db.reference(path)
         data = ref.get()
         if data is None:
-            raise ValueError(f"'{path}' のデータが存在しません。")
-        print(f"'{path}'のデータ取得成功")
+            print(f"'{path}' のデータは存在しません。")
+            return {}
+        print(f"'{path}'のデータ取得成功: {len(data)}件取得")
         return data
     except Exception as e:
         print(f"Firebaseからデータ取得中にエラーが発生しました: {e}")
         return {}
-
 
 # 時刻を分単位で計算する関数
 def time_to_minutes(time_str):
@@ -53,9 +52,9 @@ def time_to_minutes(time_str):
         print(f"時刻変換エラー: {time_str} - {e}")
         return None
 
-
 # 出席判定ロジック
 def determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes):
+    print(f"出席判定: 入室={entry_minutes}分, 退室={exit_minutes}分, 開始={start_minutes}分, 終了={end_minutes}分")
     if entry_minutes <= start_minutes + 5:
         if exit_minutes >= end_minutes - 5:
             return "○"  # 正常出席
@@ -66,37 +65,24 @@ def determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes
         return f"△遅{late_minutes}分"
     return "×"  # 欠席
 
-
-# Firebaseに退室時間を保存する関数
-def save_exit_time_to_firebase(student_id, course_id, exit_time):
+# Firebaseにデータを保存する汎用関数
+def save_to_firebase(path, data, description):
     try:
-        path = f"Students/attendance/students_id/{student_id}/exit{course_id}"
         ref = db.reference(path)
-        ref.set({'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")})
-        print(f"退室時間をFirebaseに保存しました: {exit_time}")
+        ref.set(data)
+        print(f"{description} をFirebaseに保存しました: {data}")
     except Exception as e:
-        print(f"退室時間の保存に失敗しました: {e}")
-
-
-# Firebaseに入室時間2を保存する関数
-def save_entry2_time_to_firebase(student_id, course_id, entry2_time):
-    try:
-        path = f"Students/attendance/students_id/{student_id}/entry{course_id}"
-        ref = db.reference(path)
-        ref.set({'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")})
-        print(f"入室時間2をFirebaseに保存しました: {entry2_time}")
-    except Exception as e:
-        print(f"入室時間2の保存に失敗しました: {e}")
-
+        print(f"{description} の保存に失敗しました: {e}")
 
 # 出席を記録する関数
 def record_attendance(students_data, courses_data):
-    print("\n出席記録を開始します。")
+    print("\n=== 出席記録を開始します ===")
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     courses_list = courses_data.get('course_id', [])
 
     for student_id, attendance in attendance_data.items():
+        print(f"学生ID {student_id} の出席処理を開始します。")
         student_info = students_data.get('student_info', {}).get('student_id', {}).get(student_id)
         if not student_info:
             print(f"学生 {student_id} の情報が見つかりません。スキップします。")
@@ -107,6 +93,7 @@ def record_attendance(students_data, courses_data):
         course_ids = enrollment_info.get('course_id', "").split(", ")
 
         for course_index, course_id in enumerate(course_ids, start=1):
+            print(f"コース {course_id} の処理を開始します。")
             course = courses_list[int(course_id)]
             if not course:
                 print(f"無効なコースID {course_id} が見つかりました。スキップします。")
@@ -134,20 +121,22 @@ def record_attendance(students_data, courses_data):
             entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
             entry_minutes = entry_time.hour * 60 + entry_time.minute
 
-            # 退室時間がない場合、終了時間を設定して保存
             if not exit_time_str:
                 exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
                 entry2_time = entry_time.replace(hour=(end_minutes + 10) // 60, minute=(end_minutes + 10) % 60)
-                save_exit_time_to_firebase(student_id, course_id, exit_time)
-                save_entry2_time_to_firebase(student_id, course_id, entry2_time)
+                save_to_firebase(f"Students/attendance/students_id/{student_id}/exit{course_id}",
+                                 {'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")}, "退室時間")
+                save_to_firebase(f"Students/attendance/students_id/{student_id}/entry{course_id}",
+                                 {'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")}, "入室時間2")
                 exit_minutes = end_minutes
             else:
                 exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
                 exit_minutes = exit_time.hour * 60 + exit_time.minute
 
-            # 出席状況の判定
             result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
+
+    print("=== 出席記録を終了します ===")
 
 # Firebaseからデータを取得して出席を記録
 students_data = get_data_from_firebase('Students')
