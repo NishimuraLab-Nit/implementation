@@ -59,7 +59,7 @@ def determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes
 # Firebaseに退室時間を保存する関数
 def save_exit_time_to_firebase(student_id, course_id, exit_time):
     print(f"Firebaseに退室時間を保存します: 学生ID={student_id}, コースID={course_id}, 退室時間={exit_time}")
-    path = f"Students/attendance/student_index/{student_id}/exit{course_id}"
+    path = f"Students/attendance/student_id/{student_id}/exit{course_id}"
     ref = db.reference(path)
     ref.set({'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")})
     print("Firebaseに保存しました。")
