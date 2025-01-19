@@ -137,7 +137,10 @@ def record_attendance(students_data, courses_data):
             # 退室時間がない場合、終了時間を設定して保存
             if not exit_time_str:
                 exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
+            　　 # 入室時間2を「終了時間+10分」に設定して保存
+                entry2_time = entry_time.replace(hour=(end_minutes + 10) // 60, minute=(end_minutes + 10) % 60)
                 save_exit_time_to_firebase(student_id, course_id, exit_time)
+                save_entry2_time_to_firebase(student_id, course_id, entry2_time)
                 exit_minutes = end_minutes
             else:
                 exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
@@ -146,7 +149,6 @@ def record_attendance(students_data, courses_data):
             # 出席状況の判定
             result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
-
 
 # Firebaseからデータを取得して出席を記録
 students_data = get_data_from_firebase('Students')
