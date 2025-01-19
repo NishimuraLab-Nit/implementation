@@ -26,6 +26,13 @@ def get_data_from_firebase(path):
     print(f"'{path}'のデータ: {data}")
     return data
 
+# Firebaseにデータを保存する関数
+def save_data_to_firebase(path, data):
+    print(f"Firebaseにデータを保存します: '{path}' -> {data}")
+    ref = db.reference(path)
+    ref.set(data)
+    print("データ保存が完了しました。")
+
 # 時刻を分単位で計算する関数
 def time_to_minutes(time_str):
     print(f"'{time_str}'を分に変換します。")
@@ -117,12 +124,22 @@ def record_attendance(students_data, courses_data):
                 start_minutes = time_to_minutes(start_time_str)
                 end_minutes = time_to_minutes(end_time_str)
 
-                if exit_time_str:
-                    exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
-                    exit_minutes = exit_time.hour * 60 + exit_time.minute
-                else:
-                    exit_minutes = end_minutes
+                # 退室時間が存在しない場合の処理
+                if not exit_time_str:
+                    print(f"退室時間が存在しません。終了時間を退室時間として使用します。")
+                    exit_time_str = (entry_time + datetime.timedelta(minutes=end_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+                    save_data_to_firebase(f'attendance/{student_id}/{exit_key}/read_datetime', exit_time_str)
 
+                # 退室時間の分数計算
+                exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+                exit_minutes = exit_time.hour * 60 + exit_time.minute
+
+                # 終了時間後+5分以降の判定
+                if exit_minutes > end_minutes + 5:
+                    print(f"退室時間が終了時間+5分以降のため、正常出席と判定します。")
+                    save_data_to_firebase(f'attendance/{student_id}/{exit_key}/read_datetime', exit_time_str)
+
+                # 出席判定
                 result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
 
                 try:
