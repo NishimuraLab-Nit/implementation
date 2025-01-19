@@ -99,7 +99,7 @@ def record_attendance(students_data, courses_data):
     attendance_data = students_data.get('attendance', {}).get('students_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     student_index_data = students_data.get('student_info', {}).get('student_index', {})
-    courses_list = courses_data.get('course_id', [])
+    courses_list = courses_data.get('course_id', [])  # courses_list はリスト
 
     for student_id, attendance in attendance_data.items():
         student_info = students_data.get('student_info', {}).get('student_id', {}).get(student_id)
@@ -109,31 +109,44 @@ def record_attendance(students_data, courses_data):
 
         student_index = student_info.get('student_index')
         enrollment_info = enrollment_data.get(student_index, {})
-        course_ids = enrollment_info.get('course_id', [])
+        course_ids = enrollment_info.get('course_id', [])  # コースIDのリスト
 
         sheet_id = student_index_data.get(student_index, {}).get('sheet_id')
         if not sheet_id:
             print(f"学生インデックス {student_index} に対応するスプレッドシートIDが見つかりません。")
             continue
 
+        # 学生のスプレッドシートを開く
         try:
             sheet = client.open_by_key(sheet_id)
         except Exception as e:
             print(f"スプレッドシート {sheet_id} を開けません: {e}")
             continue
 
+        # 各コースの出席を確認
         for course_id in course_ids:
-            course = courses_list.get(course_id)
-            if not course:
-                print(f"コースID {course_id} に対応するデータが見つかりません。")
+            try:
+                course_id_int = int(course_id)  # インデックスとして利用するため整数に変換
+                if course_id_int < 0 or course_id_int >= len(courses_list):
+                    print(f"無効なコースID {course_id_int} が見つかりました。スキップします。")
+                    continue
+
+                course = courses_list[course_id_int]  # リストからコース情報を取得
+                next_course = (
+                    courses_list[course_id_int + 1]
+                    if course_id_int + 1 < len(courses_list)
+                    else None
+                )
+
+                # entry1/exit1の出席記録
+                record_attendance_for_course(attendance, course, sheet, 'entry1', 'exit1', course_id)
+
+                # entry2/exit2の出席記録
+                if 'entry2' in attendance:
+                    record_attendance_for_course(attendance, course, sheet, 'entry2', 'exit2', course_id)
+            except (ValueError, IndexError) as e:
+                print(f"エラー: {e}")
                 continue
-
-            # entry1/exit1の出席記録
-            record_attendance_for_course(attendance, course, sheet, 'entry1', 'exit1', course_id)
-
-            # entry2/exit2の出席記録
-            if 'entry2' in attendance:
-                record_attendance_for_course(attendance, course, sheet, 'entry2', 'exit2', course_id)
 
 # Firebaseからデータを取得して出席を記録
 students_data = get_data_from_firebase('Students')
