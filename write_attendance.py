@@ -34,6 +34,7 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
 
     # 入室時間を日付オブジェクトに変換
     entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+    entry_month = entry_time.strftime("%Y-%m")  # シート名に使用する年月
     entry_day = entry_time.strftime("%A")
     entry_minutes = entry_time.hour * 60 + entry_time.minute
 
@@ -41,18 +42,25 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
     if course.get('schedule', {}).get('day') != entry_day:
         return False
 
-    # コースの開始時間を取得し、チルダを削除して処理
-    start_time_str = course.get('schedule', {}).get('time', '').split('-')[0].replace('~', '').strip()
-    start_time = datetime.datetime.strptime(start_time_str, "%H:%M")
+    # コースの開始時間を取得
+    start_time_str = course.get('schedule', {}).get('time', '').split('~')[0]  # "~"で区切り、開始時間を取得
+    start_time = datetime.datetime.strptime(start_time_str, "%H:%M")  # フォーマットに合わせて変換
     start_minutes = start_time.hour * 60 + start_time.minute
 
     # 入室時間が許容範囲内か確認
     if abs(entry_minutes - start_minutes) <= 5:
+        # 対象のシートを取得し更新
+        try:
+            sheet_to_update = sheet.worksheet(entry_month)
+        except gspread.exceptions.WorksheetNotFound:
+            print(f"シート '{entry_month}' が見つかりません。スキップします。")
+            return False
+
         # 正しいセル位置を計算して更新
         row = int(course_id) + 1
         column = entry_time.day + 1
-        sheet.update_cell(row, column, "○")
-        print(f"出席確認: {course['class_name']} - {entry_label}")
+        sheet_to_update.update_cell(row, column, "○")
+        print(f"出席確認: {course['class_name']} - {entry_label} - シート: {entry_month}")
         return True
     return False
 
@@ -74,7 +82,7 @@ def record_attendance(students_data, courses_data):
 
         student_index = student_info.get('student_index')
         enrollment_info = enrollment_data.get(student_index, {})
-        course_ids = enrollment_info.get('course_id', '').split(',')
+        course_ids = enrollment_info.get('course_id', [])  # 修正: リストとして扱う
 
         # student_indexからsheet_idを取得
         sheet_id = student_index_data.get(student_index, {}).get('sheet_id')
@@ -83,7 +91,11 @@ def record_attendance(students_data, courses_data):
             continue
 
         # スプレッドシートを開く
-        sheet = client.open_by_key(sheet_id).sheet1
+        try:
+            sheet = client.open_by_key(sheet_id)
+        except Exception as e:
+            print(f"スプレッドシート {sheet_id} を開けません: {e}")
+            continue
 
         # 各コースの出席を確認
         for course_id in course_ids:
@@ -91,12 +103,10 @@ def record_attendance(students_data, courses_data):
             try:
                 course_id_int = int(course_id)  # course_idは文字列として取得される可能性があるため整数に変換
                 course = courses_list[course_id_int]  # リストからインデックスで取得
+                if not course:
+                    raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
             except (ValueError, IndexError):
-                print(f"無効なコースID {course_id} が見つかりました。")
-                continue
-
-            if not course:
-                print(f"コースID {course_id} に対応する授業が見つかりません。")
+                print(f"無効なコースID {course_id} が見つかりました。スキップします。")
                 continue
 
             # entry1とentry2の出席を確認
