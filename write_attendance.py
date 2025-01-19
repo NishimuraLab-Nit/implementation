@@ -70,57 +70,57 @@ def record_attendance(students_data, courses_data):
             print(f"スプレッドシート {sheet_id} を開けません: {e}")
             continue
 
+        entry_index = 1  # entryN, exitNのインデックス
         for course_id in course_ids:
-            try:
-                course_id_int = int(course_id)
-                course = courses_list[course_id_int]
-                if not course:
-                    raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
-            except (ValueError, IndexError):
-                print(f"無効なコースID {course_id} が見つかりました。スキップします。")
-                continue
+            while True:  # entryN, exitNを順に処理
+                try:
+                    course_id_int = int(course_id)
+                    course = courses_list[course_id_int]
+                    if not course:
+                        raise ValueError(f"コースID {course_id} に対応する授業が見つかりません。")
+                except (ValueError, IndexError):
+                    print(f"無効なコースID {course_id} が見つかりました。スキップします。")
+                    break
 
-            # entry1とexit1の判定
-            entry_time_str = attendance.get('entry1', {}).get('read_datetime')
-            exit_time_str = attendance.get('exit1', {}).get('read_datetime', None)
+                # entryNとexitNの判定
+                entry_key = f'entry{entry_index}'
+                exit_key = f'exit{entry_index}'
+                entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
+                exit_time_str = attendance.get(exit_key, {}).get('read_datetime', None)
 
-            if not entry_time_str:
-                print(f"学生 {student_id} のエントリデータが見つかりません。スキップします。")
-                continue
+                if not entry_time_str:
+                    print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
+                    break  # 次のコースIDに移行
 
-            entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-            entry_minutes = entry_time.hour * 60 + entry_time.minute
+                entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+                entry_minutes = entry_time.hour * 60 + entry_time.minute
 
-            start_time_str, end_time_str = course.get('schedule', {}).get('time', '').split('~')
-            start_minutes = time_to_minutes(start_time_str)
-            end_minutes = time_to_minutes(end_time_str)
+                start_time_str, end_time_str = course.get('schedule', {}).get('time', '').split('~')
+                start_minutes = time_to_minutes(start_time_str)
+                end_minutes = time_to_minutes(end_time_str)
 
-            if exit_time_str:
-                exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
-                exit_minutes = exit_time.hour * 60 + exit_time.minute
-            else:
-                exit_minutes = end_minutes
+                if exit_time_str:
+                    exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+                    exit_minutes = exit_time.hour * 60 + exit_time.minute
+                else:
+                    exit_minutes = end_minutes
 
-            result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
+                result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
 
-            try:
-                entry_month = entry_time.strftime("%Y-%m")
-                sheet_to_update = sheet.worksheet(entry_month)
-            except gspread.exceptions.WorksheetNotFound:
-                print(f"シート '{entry_month}' が見つかりません。スキップします。")
-                continue
+                try:
+                    entry_month = entry_time.strftime("%Y-%m")
+                    sheet_to_update = sheet.worksheet(entry_month)
+                except gspread.exceptions.WorksheetNotFound:
+                    print(f"シート '{entry_month}' が見つかりません。スキップします。")
+                    break
 
-            row = int(course_id) + 1
-            column = entry_time.day + 1
-            sheet_to_update.update_cell(row, column, result)
-            print(f"出席記録: {course['class_name']} - {result}")
+                row = int(course_id) + 1
+                column = entry_time.day + 1
+                sheet_to_update.update_cell(row, column, result)
+                print(f"出席記録: {course['class_name']} - {result}")
 
-            # 次のコースIDに移行
-            # entry2がない場合、出席判定を終了
-            entry2_time_str = attendance.get('entry2', {}).get('read_datetime')
-            if not entry2_time_str:
-                print(f"次のコースID {course_id} に移行しましたが、entry2データがありません。出席判定を終了します。")
-                break  # 現在の学生の判定を終了
+                # 次のentryN, exitNに進む
+                entry_index += 1
 
 # Firebaseからデータを取得して出席を記録
 students_data = get_data_from_firebase('Students')
