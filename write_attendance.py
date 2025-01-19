@@ -80,6 +80,7 @@ def record_attendance(students_data, courses_data):
                 print(f"無効なコースID {course_id} が見つかりました。スキップします。")
                 continue
 
+            # entry1とexit1の判定
             entry_time_str = attendance.get('entry1', {}).get('read_datetime')
             exit_time_str = attendance.get('exit1', {}).get('read_datetime', None)
 
@@ -113,6 +114,13 @@ def record_attendance(students_data, courses_data):
             column = entry_time.day + 1
             sheet_to_update.update_cell(row, column, result)
             print(f"出席記録: {course['class_name']} - {result}")
+
+            # 次のコースIDに移行
+            # entry2がない場合、出席判定を終了
+            entry2_time_str = attendance.get('entry2', {}).get('read_datetime')
+            if not entry2_time_str:
+                print(f"次のコースID {course_id} に移行しましたが、entry2データがありません。出席判定を終了します。")
+                break  # 現在の学生の判定を終了
 
 # Firebaseからデータを取得して出席を記録
 students_data = get_data_from_firebase('Students')
