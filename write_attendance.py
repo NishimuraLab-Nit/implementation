@@ -70,12 +70,12 @@ def record_attendance_with_additional_logic(attendance_data, courses_data):
 
                 # 終了時間1+5分以降
                 if exit_minutes >= end_minutes + 5:
-                    save_to_firebase(f"attendance/{student_id}/{entry_key}/read_datetime", {"read_datetime": end_time_str})
+                    save_to_firebase(f"attendance/students_id/{student_id}/{entry_key}/read_datetime", {"read_datetime": end_time_str})
                     print(f"学生 {student_id} の出席は正常出席と判断されました。")
 
             else:
                 # 退室時間が存在しない場合
-                save_to_firebase(f"attendance/{student_id}/{exit_key}/read_datetime", {"read_datetime": end_time_str})
+                save_to_firebase(f"attendance/students_id/{student_id}/{exit_key}/read_datetime", {"read_datetime": end_time_str})
                 next_entry_time = (datetime.datetime.strptime(end_time_str, "%H:%M") + datetime.timedelta(minutes=10)).strftime("%H:%M")
                 save_to_firebase(f"attendance/{student_id}/entry{entry_index + 1}/read_datetime", {"read_datetime": next_entry_time})
                 print(f"退室時間がありませんでしたがデータを書き込みました。")
