@@ -41,6 +41,28 @@ def save_to_firebase(path, data):
     ref.update(data)
     print("書き込み完了。")
 
+Firebaseに退室時間を保存する関数
+def save_exit_time_to_firebase(student_id, course_id, exit_time):
+  try:
+    print(f"Firebaseに退室時間を保存します: 学生ID={student_id}, コースID={course_id}, 退室時間={exit_time}")
+    path = f"Students/attendance/students_id/{student_id}/exit{course_id}"
+    ref = db.reference(path)
+    ref.set({'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")})
+    print("退室時間をFirebaseに保存しました。")
+  except Exception as e:
+  print(f"退室時間の保存に失敗しました: {e}")
+    
+  Firebaseに入室時間2を保存する関数
+  def save_entry2_time_to_firebase(student_id, course_id, entry2_time):
+    try:
+      print(f"Firebaseに入室時間2を保存します: 学生ID={student_id}, コースID={course_id}, 入室時間2={entry2_time}")
+      path = f"Students/attendance/students_id/{student_id}/entry2{course_id}"
+      ref = db.reference(path)
+      ref.set({'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")})
+      print("入室時間2をFirebaseに保存しました。")
+    except Exception as e:
+    print(f"入室時間2の保存に失敗しました: {e}")
+
 # 出席を記録する関数
 def record_attendance_with_additional_logic(attendance_data, courses_data):
     print("\n出席記録の出席評価ロジックを実行します。")
