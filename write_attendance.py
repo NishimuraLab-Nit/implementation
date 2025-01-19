@@ -25,7 +25,6 @@ def get_data_from_firebase(path):
     ref = db.reference(path)
     return ref.get()
 
-# 出席を確認しマークする関数
 def check_and_mark_attendance(attendance, course, sheet, entry_label, exit_label, course_id, next_course=None):
     # 入室時間・退室時間を取得
     entry_time_str = attendance.get(entry_label, {}).get('read_datetime')
@@ -70,15 +69,18 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, exit_label
 
     # 次のスケジュールが存在し、同教室の場合の判定
     if next_course:
-        next_end_time_str = next_course.get('schedule', {}).get('time', '').split('~')[1]
-        next_end_time = datetime.datetime.strptime(next_end_time_str, "%H:%M")
-        next_end_minutes = next_end_time.hour * 60 + next_end_time.minute
+        # 次のスケジュールの終了時間を取得する処理
+        next_time = next_course.get('schedule', {}).get('time', '')
+        if '~' in next_time:  # フォーマットが正しいか確認
+            next_end_time_str = next_time.split('~')[1]
+            next_end_time = datetime.datetime.strptime(next_end_time_str, "%H:%M")
+            next_end_minutes = next_end_time.hour * 60 + next_end_time.minute
 
-        if exit_minutes >= next_end_minutes - 5:
-            result = "○"  # 次のスケジュールも正常出席
-        elif exit_minutes < next_end_minutes - 5:
-            early_minutes = next_end_minutes - 5 - exit_minutes
-            result = f"△早{early_minutes}分"  # 次のスケジュールで早退
+            if exit_minutes >= next_end_minutes - 5:
+                result = "○"  # 次のスケジュールも正常出席
+            elif exit_minutes < next_end_minutes - 5:
+                early_minutes = next_end_minutes - 5 - exit_minutes
+                result = f"△早{early_minutes}分"  # 次のスケジュールで早退
 
     # 対象のシートを取得し更新
     try:
