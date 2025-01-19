@@ -59,10 +59,18 @@ def determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes
 # Firebaseに退室時間を保存する関数
 def save_exit_time_to_firebase(student_id, course_id, exit_time):
     print(f"Firebaseに退室時間を保存します: 学生ID={student_id}, コースID={course_id}, 退室時間={exit_time}")
-    path = f"Students/attendance/student_id/{student_id}/exit{course_id}"
+    path = f"Students/attendance/{student_id}/exit{course_id}"
     ref = db.reference(path)
     ref.set({'read_datetime': exit_time.strftime("%Y-%m-%d %H:%M:%S")})
-    print("Firebaseに保存しました。")
+    print("退室時間をFirebaseに保存しました。")
+
+# Firebaseに入室時間2を保存する関数
+def save_entry2_time_to_firebase(student_id, course_id, entry2_time):
+    print(f"Firebaseに入室時間2を保存します: 学生ID={student_id}, コースID={course_id}, 入室時間2={entry2_time}")
+    path = f"Students/attendance/{student_id}/entry2{course_id}"
+    ref = db.reference(path)
+    ref.set({'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")})
+    print("入室時間2をFirebaseに保存しました。")
 
 # 出席を記録する関数
 def record_attendance(students_data, courses_data):
@@ -129,7 +137,11 @@ def record_attendance(students_data, courses_data):
                     save_exit_time_to_firebase(student_id, course_id, exit_time)
                     print(f"退室時間が終了時間+5分以降のため終了時間1を設定しました: {exit_time}")
 
-            result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
+                    # 入室時間2を「終了時間+10分」に設定して保存
+                    entry2_time = entry_time.replace(hour=(end_minutes + 10) // 60, minute=(end_minutes + 10) % 60)
+                    save_entry2_time_to_firebase(student_id, course_id, entry2_time)
+        
+                    result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
 
             # 出席結果を出力
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
