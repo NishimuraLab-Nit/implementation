@@ -139,6 +139,7 @@ def record_attendance(students_data, courses_data):
                 print(f"出席記録: {course['class_name']} - {result}")
 
                 entry_index += 1
+                break
 
 # Firebaseからデータを取得して出席を記録
 students_data = get_data_from_firebase('Students')
