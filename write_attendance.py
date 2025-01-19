@@ -51,7 +51,7 @@ def determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes
             print(f"遅刻 {late_minutes} 分")
             return f"△遅{late_minutes}分"
     elif entry_minutes >= end_minutes:
-        print("缺席")
+        print("欠席")
         return "×"
     print("出席状況が認識できません。")
     return None
@@ -120,8 +120,21 @@ def record_attendance(students_data, courses_data):
                 if exit_time_str:
                     exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
                     exit_minutes = exit_time.hour * 60 + exit_time.minute
+
+                    # 新しい仕様: 退室時間1が終了時間1+5分以降の場合の処理
+                    if exit_minutes > end_minutes + 5:
+                        print(f"退室時間 {exit_time_str} が終了時間 {end_minutes + 5} を超えています。退室時間を終了時間に修正します。")
+                        exit_minutes = end_minutes
+                        exit_time_str = entry_time.strftime(f"%Y-%m-%d {end_minutes // 60:02}:{end_minutes % 60:02}:00")
+                        attendance[exit_key] = {'read_datetime': exit_time_str}
+                        db.reference(f"Students/attendance/students_id/{student_id}/{exit_key}").set({'read_datetime': exit_time_str})
                 else:
+                    # 新しい仕様: 退室時間1が存在しない場合の処理
+                    print(f"退室時間が存在しません。終了時間を設定します。")
                     exit_minutes = end_minutes
+                    exit_time_str = entry_time.strftime(f"%Y-%m-%d {end_minutes // 60:02}:{end_minutes % 60:02}:00")
+                    attendance[exit_key] = {'read_datetime': exit_time_str}
+                    db.reference(f"Students/attendance/students_id/{student_id}/{exit_key}").set({'read_datetime': exit_time_str})
 
                 result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
 
