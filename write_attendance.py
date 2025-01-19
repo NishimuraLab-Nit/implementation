@@ -67,7 +67,7 @@ def save_exit_time_to_firebase(student_id, course_id, exit_time):
 # Firebaseに入室時間2を保存する関数
 def save_entry2_time_to_firebase(student_id, course_id, entry2_time):
     print(f"Firebaseに入室時間2を保存します: 学生ID={student_id}, コースID={course_id}, 入室時間2={entry2_time}")
-    path = f"Students/attendance/students_id{student_id}/entry{course_id}"
+    path = f"Students/attendance/students_id/{student_id}/entry{course_id}"
     ref = db.reference(path)
     ref.set({'read_datetime': entry2_time.strftime("%Y-%m-%d %H:%M:%S")})
     print("入室時間2をFirebaseに保存しました。")
