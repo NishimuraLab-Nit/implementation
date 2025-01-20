@@ -44,6 +44,14 @@ def time_to_minutes(time_str):
         print(f"時刻変換中にエラーが発生しました: {e}")
         return None
 
+# シートを取得または作成
+def get_or_create_sheet(spreadsheet, sheet_name):
+    try:
+        return spreadsheet.worksheet(sheet_name)
+    except gspread.exceptions.WorksheetNotFound:
+        print(f"シート '{sheet_name}' が存在しません。新しく作成します。")
+        return spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
+
 # 出席を記録
 def record_attendance(students_data, courses_data, client):
     if not students_data or not courses_data:
@@ -88,13 +96,16 @@ def record_attendance(students_data, courses_data, client):
 
             try:
                 spreadsheet = client.open_by_key(course.get('course_sheet_id'))
-                sheet = spreadsheet.worksheet(sheet_name)
+                sheet = get_or_create_sheet(spreadsheet, sheet_name)
 
                 cell = sheet.find(student_index)
                 if cell:
                     sheet.update_cell(cell.row, cell.col + 1, "○")
+                    print(f"学生ID: {student_id} の出席情報を '{sheet_name}' シートに更新しました。")
+                else:
+                    print(f"学生インデックス {student_index} がシート内に見つかりませんでした。")
             except Exception as e:
-                print(f"シート更新中にエラーが発生しました: {e}")
+                print(f"シート更新中にエラーが発生しました: {e} (シート名: {sheet_name})")
 
 # メイン処理
 def main():
