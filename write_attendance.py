@@ -117,7 +117,7 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
     return "×", transition_occurred, None, None
 
 # 出席記録
-def record_attendance(students_data, courses_data):
+def record_attendance(students_data, courses_data, sheet):
     """
     学生データとコースデータを基に出席を記録します。
     """
@@ -132,6 +132,7 @@ def record_attendance(students_data, courses_data):
     courses_list = courses_data.get('course_id', [])
 
     temporary_entries = {}
+    sheet.append_row(["学生ID", "コースID", "判定結果", "移行"])
 
     for student_id, attendance in attendance_data.items():
         print(f"\n学生ID: {student_id}")
@@ -193,6 +194,8 @@ def record_attendance(students_data, courses_data):
             )
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
+            sheet.append_row([student_id, course_id, result, "Yes" if transition else "No"])
+
             if transition:
                 temporary_entries[(student_id, course_index + 1)] = (
                     time_to_minutes(new_entry_obj.strftime("%H:%M")),
@@ -206,9 +209,10 @@ def main():
     try:
         initialize_firebase()
         client = initialize_google_sheets()
+        sheet = client.open("出席記録").sheet1
         students_data = get_data_from_firebase('Students')
         courses_data = get_data_from_firebase('Courses')
-        record_attendance(students_data, courses_data)
+        record_attendance(students_data, courses_data, sheet)
     except Exception as e:
         print(f"メイン処理中にエラーが発生しました: {e}")
 
