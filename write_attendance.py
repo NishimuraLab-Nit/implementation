@@ -9,74 +9,51 @@ def initialize_firebase():
     """Firebaseアプリの初期化を行います。"""
     if not firebase_admin._apps:
         print("Firebaseの初期化を実行します。")
-        try:
-            cred = credentials.Certificate('/tmp/firebase_service_account.json')
-            firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-            })
-            print("Firebase初期化が完了しました。")
-        except Exception as e:
-            print(f"Firebase初期化中にエラーが発生しました: {e}")
-            raise
+        cred = credentials.Certificate('/tmp/firebase_service_account.json')
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+        })
+        print("Firebase初期化が完了しました。")
 
 # Google Sheets APIの初期化
 def initialize_google_sheets():
     """Google Sheets APIの初期化を行います。"""
-    try:
-        print("Google Sheets APIのスコープを設定します。")
-        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
-        print("Google Sheets APIの初期化が完了しました。")
-        return gspread.authorize(creds)
-    except Exception as e:
-        print(f"Google Sheets API初期化中にエラーが発生しました: {e}")
-        raise
+    print("Google Sheets APIのスコープを設定します。")
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
+    print("Google Sheets APIの初期化が完了しました。")
+    return gspread.authorize(creds)
 
 # Firebaseからデータを取得
 def get_data_from_firebase(path):
     """指定したパスからFirebaseのデータを取得します。"""
-    try:
-        print(f"Firebaseから'{path}'のデータを取得します。")
-        ref = db.reference(path)
-        data = ref.get()
-        print(f"'{path}'のデータ: {data}")
-        return data
-    except Exception as e:
-        print(f"Firebaseからデータを取得中にエラーが発生しました: {e}")
-        return None
+    print(f"Firebaseから'{path}'のデータを取得します。")
+    ref = db.reference(path)
+    data = ref.get()
+    print(f"'{path}'のデータ: {data}")
+    return data
 
 # 時刻を分単位に変換
 def time_to_minutes(time_str):
     """時刻文字列を分単位に変換します。"""
-    try:
-        print(f"'{time_str}'を分に変換します。")
-        time_obj = datetime.datetime.strptime(time_str, "%H:%M")
-        return time_obj.hour * 60 + time_obj.minute
-    except Exception as e:
-        print(f"時刻変換中にエラーが発生しました: {e}")
-        return None
+    print(f"'{time_str}'を分に変換します。")
+    time_obj = datetime.datetime.strptime(time_str, "%H:%M")
+    return time_obj.hour * 60 + time_obj.minute
 
 # 分単位を時刻文字列に変換
 def minutes_to_time(minutes):
     """分単位を時刻文字列に変換します。"""
-    try:
-        hours = minutes // 60
-        mins = minutes % 60
-        return f"{hours:02}:{mins:02}"
-    except Exception as e:
-        print(f"分を時刻文字列に変換中にエラーが発生しました: {e}")
-        return None
+    hours = minutes // 60
+    mins = minutes % 60
+    return f"{hours:02}:{mins:02}"
 
 # Firebaseに時刻を保存
 def save_time_to_firebase(path, time_obj):
     """指定したパスに時刻データをFirebaseに保存します。"""
-    try:
-        print(f"Firebaseにデータを保存します: {path} - {time_obj}")
-        ref = db.reference(path)
-        ref.set({'read_datetime': time_obj.strftime("%Y-%m-%d %H:%M:%S")})
-        print(f"{path} に保存しました。")
-    except Exception as e:
-        print(f"Firebaseへの保存中にエラーが発生しました: {e}")
+    print(f"Firebaseにデータを保存します: {path} - {time_obj}")
+    ref = db.reference(path)
+    ref.set({'read_datetime': time_obj.strftime("%Y-%m-%d %H:%M:%S")})
+    print(f"{path} に保存しました。")
 
 # 出席判定ロジック
 def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index):
@@ -149,13 +126,13 @@ def record_attendance(students_data, courses_data, sheet):
         while course_index <= len(course_ids):
             course_id = course_ids[course_index - 1]
             print(f"コースID: {course_id}")
-            try:
-                course = courses_list[int(course_id)]
-            except (ValueError, IndexError):
+
+            if not course_id.isdigit() or int(course_id) >= len(courses_list):
                 print(f"無効なコースID {course_id} が見つかりました。スキップします。")
                 course_index += 1
                 continue
 
+            course = courses_list[int(course_id)]
             schedule = course.get('schedule', {}).get('time', '').split('~')
             if len(schedule) != 2:
                 print(f"コース {course_id} のスケジュール情報が不完全です。スキップします。")
@@ -194,10 +171,7 @@ def record_attendance(students_data, courses_data, sheet):
             )
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
-            try:
-                sheet.append_row([student_id, course_id, result, "Yes" if transition else "No"])
-            except Exception as e:
-                print(f"スプレッドシートへの記録中にエラーが発生しました: {e}")
+            sheet.append_row([student_id, course_id, result, "Yes" if transition else "No"])
 
             if transition:
                 temporary_entries[(student_id, course_index + 1)] = (
@@ -209,20 +183,24 @@ def record_attendance(students_data, courses_data, sheet):
 
 # メイン処理
 def main():
-    try:
-        initialize_firebase()
-        client = initialize_google_sheets()
-        try:
-            sheet = client.open("出席記録").sheet1
-        except Exception as e:
-            print(f"スプレッドシートの取得中にエラーが発生しました: {e}")
-            return
+    initialize_firebase()
+    client = initialize_google_sheets()
 
-        students_data = get_data_from_firebase('Students')
-        courses_data = get_data_from_firebase('Courses')
-        record_attendance(students_data, courses_data, sheet)
-    except Exception as e:
-        print(f"メイン処理中にエラーが発生しました: {e}")
+    sheet = None
+    try:
+        sheet = client.open("出席記録").sheet1
+    except gspread.SpreadsheetNotFound:
+        print("スプレッドシート '出席記録' が見つかりません。適切な名前を指定してください。")
+        return
+
+    students_data = get_data_from_firebase('Students')
+    courses_data = get_data_from_firebase('Courses')
+
+    if students_data is None or courses_data is None:
+        print("Firebaseから必要なデータが取得できませんでした。")
+        return
+
+    record_attendance(students_data, courses_data, sheet)
 
 if __name__ == "__main__":
     main()
