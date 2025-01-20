@@ -4,8 +4,9 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Firebaseアプリの初期化
+# Firebaseの初期化
 def initialize_firebase():
+    """Firebaseアプリの初期化を行います。"""
     if not firebase_admin._apps:
         print("Firebaseの初期化を実行します。")
         try:
@@ -20,8 +21,9 @@ def initialize_firebase():
 
 # Google Sheets APIの初期化
 def initialize_google_sheets():
-    print("Google Sheets APIのスコープを設定します。")
+    """Google Sheets APIの初期化を行います。"""
     try:
+        print("Google Sheets APIのスコープを設定します。")
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
         print("Google Sheets APIの初期化が完了しました。")
@@ -30,8 +32,9 @@ def initialize_google_sheets():
         print(f"Google Sheets API初期化中にエラーが発生しました: {e}")
         raise
 
-# Firebaseからデータを取得する関数
+# Firebaseからデータを取得
 def get_data_from_firebase(path):
+    """指定したパスからFirebaseのデータを取得します。"""
     try:
         print(f"Firebaseから'{path}'のデータを取得します。")
         ref = db.reference(path)
@@ -44,6 +47,7 @@ def get_data_from_firebase(path):
 
 # 時刻を分単位に変換
 def time_to_minutes(time_str):
+    """時刻文字列を分単位に変換します。"""
     try:
         print(f"'{time_str}'を分に変換します。")
         time_obj = datetime.datetime.strptime(time_str, "%H:%M")
@@ -54,6 +58,7 @@ def time_to_minutes(time_str):
 
 # 分単位を時刻文字列に変換
 def minutes_to_time(minutes):
+    """分単位を時刻文字列に変換します。"""
     try:
         hours = minutes // 60
         mins = minutes % 60
@@ -61,8 +66,10 @@ def minutes_to_time(minutes):
     except Exception as e:
         print(f"分を時刻文字列に変換中にエラーが発生しました: {e}")
         return None
+
 # Firebaseに時刻を保存
 def save_time_to_firebase(path, time_obj):
+    """指定したパスに時刻データをFirebaseに保存します。"""
     try:
         print(f"Firebaseにデータを保存します: {path} - {time_obj}")
         ref = db.reference(path)
@@ -73,10 +80,13 @@ def save_time_to_firebase(path, time_obj):
 
 # 出席判定ロジック
 def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index):
+    """
+    出席状況を判定し、必要に応じて出席記録を調整します。
+    """
     print(f"出席判定: entry_minutes={entry_minutes}, exit_minutes={exit_minutes}, start_minutes={start_minutes}, end_minutes={end_minutes}")
     transition_occurred = False
 
-    if exit_minutes > end_minutes + 5:  # 退室時間が終了時間+5分以降の場合
+    if exit_minutes > end_minutes + 5:
         print("退室時間が終了時間+5分以降です。処理を開始します。")
 
         final_exit_time = end_minutes
@@ -106,8 +116,11 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
             return f"△遅{late_minutes}分", transition_occurred
     return "×", transition_occurred
 
-# 出席を記録
-def record_attendance(students_data, courses_data, custom_entry2=None, custom_exit2=None):
+# 出席記録
+def record_attendance(students_data, courses_data):
+    """
+    学生データとコースデータを基に出席を記録します。
+    """
     if not students_data or not courses_data:
         print("学生データまたはコースデータが存在しません。")
         return
@@ -152,28 +165,23 @@ def record_attendance(students_data, courses_data, custom_entry2=None, custom_ex
             entry_key = f'entry{course_index}'
             exit_key = f'exit{course_index}'
 
-            if custom_entry2 and custom_exit2 and course_index == 2:
-                print("カスタム値を使用します。")
-                entry_minutes = custom_entry2
-                exit_minutes = custom_exit2
+            entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
+            if not entry_time_str:
+                print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
+                course_index += 1
+                continue
+
+            entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+            entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
+
+            exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
+            if not exit_time_str:
+                exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
+                save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", exit_time)
+                exit_minutes = end_minutes
             else:
-                entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
-                if not entry_time_str:
-                    print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
-                    course_index += 1
-                    continue
-
-                entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-                entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
-
-                exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
-                if not exit_time_str:
-                    exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
-                    save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", exit_time)
-                    exit_minutes = end_minutes
-                else:
-                    exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
-                    exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
+                exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+                exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
 
             result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
@@ -189,12 +197,7 @@ def main():
         client = initialize_google_sheets()
         students_data = get_data_from_firebase('Students')
         courses_data = get_data_from_firebase('Courses')
-        # `end_minutes + 10` と `exit_minutes` をカスタム値として渡す
-        end_minutes = 720  # 例: 12:00 (分換算)
-        exit_minutes = 750  # 例: 12:30 (分換算)
-        custom_entry2 = end_minutes + 10
-        custom_exit2 = exit_minutes
-        record_attendance(students_data, courses_data, custom_entry2, custom_exit2)
+        record_attendance(students_data, courses_data)
     except Exception as e:
         print(f"メイン処理中にエラーが発生しました: {e}")
 
