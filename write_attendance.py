@@ -45,12 +45,17 @@ def time_to_minutes(time_str):
         return None
 
 # シートを取得または作成
-def get_or_create_sheet(spreadsheet, sheet_name):
+def get_or_select_sheet(spreadsheet, sheet_name):
     try:
-        return spreadsheet.worksheet(sheet_name)
-    except gspread.exceptions.WorksheetNotFound:
+        sheets = spreadsheet.worksheets()
+        for sheet in sheets:
+            if sheet.title == sheet_name:
+                return sheet
         print(f"シート '{sheet_name}' が存在しません。新しく作成します。")
         return spreadsheet.add_worksheet(title=sheet_name, rows=100, cols=20)
+    except Exception as e:
+        print(f"シート取得または作成中にエラーが発生しました: {e}")
+        raise
 
 # 出席を記録
 def record_attendance(students_data, courses_data, client):
@@ -96,7 +101,7 @@ def record_attendance(students_data, courses_data, client):
 
             try:
                 spreadsheet = client.open_by_key(course.get('course_sheet_id'))
-                sheet = get_or_create_sheet(spreadsheet, sheet_name)
+                sheet = get_or_select_sheet(spreadsheet, sheet_name)
 
                 cell = sheet.find(student_index)
                 if cell:
