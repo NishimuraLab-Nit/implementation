@@ -20,6 +20,18 @@ def initialize_google_sheets():
     creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
     return gspread.authorize(creds)
 
+# Firebaseからデータを取得する関数
+def get_data_from_firebase(path):
+    try:
+        print(f"Firebaseから'{path}'のデータを取得します。")
+        ref = db.reference(path)
+        data = ref.get()
+        print(f"'{path}'のデータ: {data}")
+        return data
+    except Exception as e:
+        print(f"Firebaseからデータを取得中にエラーが発生しました: {e}")
+        return None
+
 # 時刻を分単位に変換
 def time_to_minutes(time_str):
     try:
@@ -160,8 +172,8 @@ def main():
     courses_data = get_data_from_firebase('Courses')
 
     # カスタム値を渡す
-    custom_entry2 = "10:25"
-    custom_exit2 = "12:10"
+    custom_entry2 = end_minutes + 10
+    custom_exit2 = exit_minutes
     record_attendance(students_data, courses_data, custom_entry2, custom_exit2)
 
 if __name__ == "__main__":
