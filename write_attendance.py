@@ -194,7 +194,10 @@ def record_attendance(students_data, courses_data, sheet):
             )
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
-            sheet.append_row([student_id, course_id, result, "Yes" if transition else "No"])
+            try:
+                sheet.append_row([student_id, course_id, result, "Yes" if transition else "No"])
+            except Exception as e:
+                print(f"スプレッドシートへの記録中にエラーが発生しました: {e}")
 
             if transition:
                 temporary_entries[(student_id, course_index + 1)] = (
@@ -209,7 +212,12 @@ def main():
     try:
         initialize_firebase()
         client = initialize_google_sheets()
-        sheet = client.open("出席記録").sheet1
+        try:
+            sheet = client.open("出席記録").sheet1
+        except Exception as e:
+            print(f"スプレッドシートの取得中にエラーが発生しました: {e}")
+            return
+
         students_data = get_data_from_firebase('Students')
         courses_data = get_data_from_firebase('Courses')
         record_attendance(students_data, courses_data, sheet)
