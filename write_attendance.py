@@ -30,17 +30,30 @@ def initialize_google_sheets():
         print(f"Google Sheets API初期化中にエラーが発生しました: {e}")
         raise
 
-# シートの一覧を取得
-def get_sheet_list(client):
+# 学生ごとのシート名を取得
+def get_student_sheets(client, students_data):
     try:
-        print("Google Sheetsの一覧を取得します。")
-        sheet_list = client.list_spreadsheet_files()
-        for sheet in sheet_list:
-            print(f"- {sheet['name']}: {sheet['id']}")
-        return sheet_list
+        print("\n学生ごとのシート名を取得します。")
+        student_info = students_data.get('student_info', {}).get('student_index', {})
+        sheet_names = {}
+
+        for student_id, info in student_info.items():
+            sheet_id = info.get('sheet_id')
+            if not sheet_id:
+                print(f"学生ID {student_id} にはシートIDがありません。")
+                continue
+
+            try:
+                sheet = client.open_by_key(sheet_id)
+                sheet_names[student_id] = sheet.title
+                print(f"- 学生ID {student_id}: {sheet.title}")
+            except Exception as e:
+                print(f"シートID {sheet_id} の取得中にエラーが発生しました: {e}")
+
+        return sheet_names
     except Exception as e:
-        print(f"シート一覧の取得中にエラーが発生しました: {e}")
-        return []
+        print(f"学生ごとのシート名の取得中にエラーが発生しました: {e}")
+        return {}
 
 # Firebaseからデータを取得する関数
 def get_data_from_firebase(path):
@@ -132,9 +145,12 @@ def main():
     try:
         initialize_firebase()
         client = initialize_google_sheets()
-        sheet_list = get_sheet_list(client)
         students_data = get_data_from_firebase('Students')
         courses_data = get_data_from_firebase('Courses')
+        student_sheets = get_student_sheets(client, students_data)
+        print("\n学生シート名:")
+        for student_id, sheet_name in student_sheets.items():
+            print(f"- {student_id}: {sheet_name}")
         record_attendance(students_data, courses_data)
     except Exception as e:
         print(f"メイン処理中にエラーが発生しました: {e}")
