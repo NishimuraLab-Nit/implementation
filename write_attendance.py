@@ -4,21 +4,34 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+
 # Firebaseアプリの初期化
 def initialize_firebase():
     if not firebase_admin._apps:
         print("Firebaseの初期化を実行します。")
-        cred = credentials.Certificate('/tmp/firebase_service_account.json')
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-        })
+        try:
+            cred = credentials.Certificate('/tmp/firebase_service_account.json')
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+            })
+            print("Firebase初期化が完了しました。")
+        except Exception as e:
+            print(f"Firebase初期化中にエラーが発生しました: {e}")
+            raise
+
 
 # Google Sheets APIの初期化
 def initialize_google_sheets():
     print("Google Sheets APIのスコープを設定します。")
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
-    return gspread.authorize(creds)
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
+        print("Google Sheets APIの初期化が完了しました。")
+        return gspread.authorize(creds)
+    except Exception as e:
+        print(f"Google Sheets API初期化中にエラーが発生しました: {e}")
+        raise
+
 
 # Firebaseからデータを取得する関数
 def get_data_from_firebase(path):
@@ -32,6 +45,7 @@ def get_data_from_firebase(path):
         print(f"Firebaseからデータを取得中にエラーが発生しました: {e}")
         return None
 
+
 # 時刻を分単位に変換
 def time_to_minutes(time_str):
     try:
@@ -42,6 +56,18 @@ def time_to_minutes(time_str):
         print(f"時刻変換中にエラーが発生しました: {e}")
         return None
 
+
+# 分単位を時刻文字列に変換
+def minutes_to_time(minutes):
+    try:
+        hours = minutes // 60
+        mins = minutes % 60
+        return f"{hours:02}:{mins:02}"
+    except Exception as e:
+        print(f"分を時刻文字列に変換中にエラーが発生しました: {e}")
+        return None
+
+
 # Firebaseに時刻を保存
 def save_time_to_firebase(path, time_obj):
     try:
@@ -51,6 +77,7 @@ def save_time_to_firebase(path, time_obj):
         print(f"{path} に保存しました。")
     except Exception as e:
         print(f"Firebaseへの保存中にエラーが発生しました: {e}")
+
 
 # 出席判定ロジック
 def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index):
@@ -86,6 +113,7 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
             late_minutes = entry_minutes - (start_minutes + 5)
             return f"△遅{late_minutes}分", transition_occurred
     return "×", transition_occurred
+
 
 # 出席を記録
 def record_attendance(students_data, courses_data, custom_entry2=None, custom_exit2=None):
@@ -133,11 +161,10 @@ def record_attendance(students_data, courses_data, custom_entry2=None, custom_ex
             entry_key = f'entry{course_index}'
             exit_key = f'exit{course_index}'
 
-            # entry2, exit2 のカスタム値を使用
             if custom_entry2 and custom_exit2 and course_index == 2:
                 print("カスタム値を使用します。")
-                entry_minutes = time_to_minutes(custom_entry2)
-                exit_minutes = time_to_minutes(custom_exit2)
+                entry_minutes = custom_entry2
+                exit_minutes = custom_exit2
             else:
                 entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
                 if not entry_time_str:
@@ -164,17 +191,25 @@ def record_attendance(students_data, courses_data, custom_entry2=None, custom_ex
                 print(f"移行が発生しました。次のコース（ID: {course_index + 1}）を処理します。")
             course_index += 1
 
+
 # メイン処理
 def main():
-    initialize_firebase()
-    client = initialize_google_sheets()
-    students_data = get_data_from_firebase('Students')
-    courses_data = get_data_from_firebase('Courses')
+    try:
+        initialize_firebase()
+        client = initialize_google_sheets()
+        students_data = get_data_from_firebase('Students')
+        courses_data = get_data_from_firebase('Courses')
 
-    # カスタム値を渡す
-    custom_entry2 = end_minutes + 10
-    custom_exit2 = exit_minutes
-    record_attendance(students_data, courses_data, custom_entry2, custom_exit2)
+        # `end_minutes + 10` と `exit_minutes` をカスタム値として渡す
+        end_minutes = 720  # 例: 12:00 (分換算)
+        exit_minutes = 750  # 例: 12:30 (分換算)
+        custom_entry2 = end_minutes + 10
+        custom_exit2 = exit_minutes
+
+        record_attendance(students_data, courses_data, custom_entry2, custom_exit2)
+    except Exception as e:
+        print(f"メイン処理中にエラーが発生しました: {e}")
+
 
 if __name__ == "__main__":
     main()
