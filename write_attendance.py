@@ -37,9 +37,7 @@ def time_to_minutes(time_str):
     try:
         print(f"'{time_str}'を分に変換します。")
         time_obj = datetime.datetime.strptime(time_str, "%H:%M")
-        minutes = time_obj.hour * 60 + time_obj.minute
-        print(f"{time_str} は {minutes} 分です。")
-        return minutes
+        return time_obj.hour * 60 + time_obj.minute
     except Exception as e:
         print(f"時刻変換中にエラーが発生しました: {e}")
         return None
@@ -54,7 +52,7 @@ def save_time_to_firebase(path, time_obj):
     except Exception as e:
         print(f"Firebaseへの保存中にエラーが発生しました: {e}")
 
-# 出席判定ロジック（仕様追加対応）
+# 出席判定ロジック
 def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index):
     print(f"出席判定: entry_minutes={entry_minutes}, exit_minutes={exit_minutes}, start_minutes={start_minutes}, end_minutes={end_minutes}")
     transition_occurred = False
@@ -62,45 +60,31 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
     if exit_minutes > end_minutes + 5:  # 退室時間が終了時間+5分以降の場合
         print("退室時間が終了時間+5分以降です。処理を開始します。")
         
-        # 一旦現在の退室時間を別の変数に保存
-        new_exit_time = exit_minutes
-        
-        # 退室時間1を終了時間1に設定
         final_exit_time = end_minutes
         final_exit_obj = datetime.datetime.now().replace(hour=final_exit_time // 60, minute=final_exit_time % 60)
         save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", final_exit_obj)
-        
-        # 入室時間2を終了時間+5分に設定
+
         new_entry_time = end_minutes + 5
         new_entry_obj = datetime.datetime.now().replace(hour=new_entry_time // 60, minute=new_entry_time % 60)
         save_time_to_firebase(f"Students/attendance/student_id/{student_id}/entry{course_index + 1}", new_entry_obj)
-        
-        # 退室時間2を新たに保存した変数に設定
-        new_exit_obj = datetime.datetime.now().replace(hour=new_exit_time // 60, minute=new_exit_time % 60)
+
+        new_exit_obj = datetime.datetime.now().replace(hour=exit_minutes // 60, minute=exit_minutes % 60)
         save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index + 1}", new_exit_obj)
         
-        print(f"退室時間1を終了時間1に設定し、入室時間2と退室時間2を保存しました。")
-        
-        # 出席を正常と判定
-        print("正常出席")
+        print("退室時間1を終了時間1に設定し、入室時間2と退室時間2を保存しました。")
         transition_occurred = True
-        return "○", transition_occurred  # 正常出席
+        return "○", transition_occurred
 
-    # 通常の出席判定ロジック
     if entry_minutes <= start_minutes + 5:
         if exit_minutes >= end_minutes - 5:
-            print("正常出席")
             return "○", transition_occurred
         elif exit_minutes < end_minutes - 5:
             early_minutes = end_minutes - 5 - exit_minutes
-            print(f"早退 {early_minutes} 分")
             return f"△早{early_minutes}分", transition_occurred
     elif entry_minutes > start_minutes + 5:
         if exit_minutes >= end_minutes - 5:
             late_minutes = entry_minutes - (start_minutes + 5)
-            print(f"遅刻 {late_minutes} 分")
             return f"△遅{late_minutes}分", transition_occurred
-    print("欠席")
     return "×", transition_occurred
 
 # 出席を記録
@@ -126,13 +110,10 @@ def record_attendance(students_data, courses_data):
         enrollment_info = enrollment_data.get(student_index, {})
         course_ids = enrollment_info.get('course_id', "").split(", ")
 
-        # コースごとに処理
-        course_index = 1  # コース用のインデックス
+        course_index = 1  # コースの処理用インデックス
         while course_index <= len(course_ids):
             course_id = course_ids[course_index - 1]
             print(f"コースID: {course_id}")
-
-            # コースデータの取得と検証
             try:
                 course = courses_list[int(course_id)]
             except (ValueError, IndexError):
@@ -152,7 +133,6 @@ def record_attendance(students_data, courses_data):
             entry_key = f'entry{course_index}'
             exit_key = f'exit{course_index}'
 
-            # 入室データの取得
             entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
             if not entry_time_str:
                 print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
@@ -162,7 +142,6 @@ def record_attendance(students_data, courses_data):
             entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
             entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
 
-            # 退室データの取得
             exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
             if not exit_time_str:
                 exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
@@ -172,27 +151,19 @@ def record_attendance(students_data, courses_data):
                 exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
                 exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
 
-            # 出席判定ロジックの実行
             result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
-            # 移行が発生した場合、次のコースへ進む（ループを継続）
             if transition:
                 print(f"移行が発生しました。次のコース（ID: {course_index + 1}）を処理します。")
-                course_index += 1
-                continue
-
-            # 通常の次のコース処理
             course_index += 1
 
 # メイン処理
 def main():
     initialize_firebase()
     client = initialize_google_sheets()
-
     students_data = get_data_from_firebase('Students')
     courses_data = get_data_from_firebase('Courses')
-
     record_attendance(students_data, courses_data)
 
 if __name__ == "__main__":
