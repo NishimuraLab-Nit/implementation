@@ -20,18 +20,6 @@ def initialize_google_sheets():
     creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
     return gspread.authorize(creds)
 
-# Firebaseからデータを取得
-def get_data_from_firebase(path):
-    try:
-        print(f"Firebaseから'{path}'のデータを取得します。")
-        ref = db.reference(path)
-        data = ref.get()
-        print(f"'{path}'のデータ: {data}")
-        return data
-    except Exception as e:
-        print(f"Firebaseからデータを取得中にエラーが発生しました: {e}")
-        return None
-
 # 時刻を分単位に変換
 def time_to_minutes(time_str):
     try:
@@ -88,7 +76,7 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
     return "×", transition_occurred
 
 # 出席を記録
-def record_attendance(students_data, courses_data):
+def record_attendance(students_data, courses_data, custom_entry2=None, custom_exit2=None):
     if not students_data or not courses_data:
         print("学生データまたはコースデータが存在しません。")
         return
@@ -133,23 +121,29 @@ def record_attendance(students_data, courses_data):
             entry_key = f'entry{course_index}'
             exit_key = f'exit{course_index}'
 
-            entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
-            if not entry_time_str:
-                print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
-                course_index += 1
-                continue
-
-            entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-            entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
-
-            exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
-            if not exit_time_str:
-                exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
-                save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", exit_time)
-                exit_minutes = end_minutes
+            # entry2, exit2 のカスタム値を使用
+            if custom_entry2 and custom_exit2 and course_index == 2:
+                print("カスタム値を使用します。")
+                entry_minutes = time_to_minutes(custom_entry2)
+                exit_minutes = time_to_minutes(custom_exit2)
             else:
-                exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
-                exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
+                entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
+                if not entry_time_str:
+                    print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
+                    course_index += 1
+                    continue
+
+                entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+                entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
+
+                exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
+                if not exit_time_str:
+                    exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
+                    save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", exit_time)
+                    exit_minutes = end_minutes
+                else:
+                    exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+                    exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
 
             result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
@@ -164,7 +158,11 @@ def main():
     client = initialize_google_sheets()
     students_data = get_data_from_firebase('Students')
     courses_data = get_data_from_firebase('Courses')
-    record_attendance(students_data, courses_data)
+
+    # カスタム値を渡す
+    custom_entry2 = "10:25"
+    custom_exit2 = "12:10"
+    record_attendance(students_data, courses_data, custom_entry2, custom_exit2)
 
 if __name__ == "__main__":
     main()
