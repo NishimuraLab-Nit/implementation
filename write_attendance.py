@@ -4,154 +4,108 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-
-# Firebaseの初期化
+# Firebaseアプリの初期化
 def initialize_firebase():
-    """Firebaseアプリの初期化を行います。"""
     if not firebase_admin._apps:
-        cred = credentials.Certificate('/tmp/firebase_service_account.json')
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-        })
-
+        try:
+            cred = credentials.Certificate('/tmp/firebase_service_account.json')
+            firebase_admin.initialize_app(cred, {
+                'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+            })
+        except Exception as e:
+            print(f"Firebase初期化中にエラーが発生しました: {e}")
+            raise
 
 # Google Sheets APIの初期化
 def initialize_google_sheets():
-    """Google Sheets APIの初期化を行います。"""
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
-    return gspread.authorize(creds)
+    try:
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
+        return gspread.authorize(creds)
+    except Exception as e:
+        print(f"Google Sheets API初期化中にエラーが発生しました: {e}")
+        raise
 
-
-# Firebaseからデータを取得
+# Firebaseからデータを取得する関数
 def get_data_from_firebase(path):
-    """指定されたパスからFirebaseのデータを取得します。"""
-    ref = db.reference(path)
-    return ref.get()
+    try:
+        ref = db.reference(path)
+        return ref.get()
+    except Exception as e:
+        print(f"Firebaseからデータを取得中にエラーが発生しました: {e}")
+        return None
 
-
-# 時刻関連のユーティリティ関数
+# 時刻を分単位に変換
 def time_to_minutes(time_str):
-    """時刻文字列を分単位に変換します。"""
-    time_obj = datetime.datetime.strptime(time_str, "%H:%M")
-    return time_obj.hour * 60 + time_obj.minute
+    try:
+        time_obj = datetime.datetime.strptime(time_str, "%H:%M")
+        return time_obj.hour * 60 + time_obj.minute
+    except Exception as e:
+        print(f"時刻変換中にエラーが発生しました: {e}")
+        return None
 
-
-def minutes_to_time(minutes):
-    """分を時刻文字列に変換します。"""
-    hours = minutes // 60
-    mins = minutes % 60
-    return f"{hours:02}:{mins:02}"
-
-
-# Firebaseに時刻を保存
-def save_time_to_firebase(path, time_obj):
-    """指定されたパスに時刻データをFirebaseに保存します。"""
-    ref = db.reference(path)
-    ref.set({'read_datetime': time_obj.strftime("%Y-%m-%d %H:%M:%S")})
-
-
-# 出席判定ロジック
-def determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index):
-    """出席状況を判定します。"""
-    transition_occurred = False
-
-    if exit_minutes > end_minutes + 5:
-        # 遅い退室処理
-        final_exit_obj = create_time_object(end_minutes)
-        save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", final_exit_obj)
-
-        new_entry_time = end_minutes + 5
-        new_entry_obj = create_time_object(new_entry_time)
-        save_time_to_firebase(f"Students/attendance/student_id/{student_id}/entry{course_index + 1}", new_entry_obj)
-
-        new_exit_obj = create_time_object(exit_minutes)
-        save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index + 1}", new_exit_obj)
-
-        transition_occurred = True
-        return "○", transition_occurred, new_entry_obj, new_exit_obj
-
-    # 判定ロジック
-    if entry_minutes <= start_minutes + 5:
-        if exit_minutes >= end_minutes - 5:
-            return "○", transition_occurred, None, None
-        return f"△早{end_minutes - 5 - exit_minutes}分", transition_occurred, None, None
-
-    if exit_minutes >= end_minutes - 5:
-        return f"△遅{entry_minutes - (start_minutes + 5)}分", transition_occurred, None, None
-
-    return "×", transition_occurred, None, None
-
-
-def create_time_object(minutes):
-    """分を現在の日付の時刻オブジェクトに変換します。"""
-    now = datetime.datetime.now()
-    return now.replace(hour=minutes // 60, minute=minutes % 60, second=0, microsecond=0)
-
-
-# 出席記録のメイン処理
-def record_attendance(students_data, courses_data, sheet):
-    """学生とコースデータを基に出席を記録します。"""
+# 出席を記録
+def record_attendance(students_data, courses_data, client):
     if not students_data or not courses_data:
-        print("学生データまたはコースデータが不足しています。")
+        print("学生データまたはコースデータが存在しません。")
         return
 
     attendance_data = students_data.get('attendance', {}).get('student_id', {})
+    enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     student_info_data = students_data.get('student_info', {}).get('student_id', {})
     courses_list = courses_data.get('course_id', [])
-
-    sheet.append_row(["学生ID", "コースID", "判定結果", "移行"])
 
     for student_id, attendance in attendance_data.items():
         student_info = student_info_data.get(student_id)
         if not student_info:
             continue
 
-        course_ids = student_info.get('course_id', "").split(", ")
+        student_index = student_info.get('student_index')
+        enrollment_info = enrollment_data.get(student_index, {})
+        course_ids = enrollment_info.get('course_id', "").split(", ")
+
         for course_index, course_id in enumerate(course_ids, start=1):
-            course = courses_list[int(course_id)] if course_id.isdigit() else None
-            if not course or 'schedule' not in course:
+            try:
+                course = courses_list[int(course_id)]
+            except (ValueError, IndexError):
                 continue
 
-            start_minutes = time_to_minutes(course['schedule']['time'].split('~')[0])
-            end_minutes = time_to_minutes(course['schedule']['time'].split('~')[1])
+            schedule = course.get('schedule', {}).get('time', '').split('~')
+            if len(schedule) != 2:
+                continue
 
-            entry_time_str = attendance.get(f'entry{course_index}', {}).get('read_datetime')
-            exit_time_str = attendance.get(f'exit{course_index}', {}).get('read_datetime')
+            start_minutes = time_to_minutes(schedule[0])
+            end_minutes = time_to_minutes(schedule[1])
+
+            entry_key = f'entry{course_index}'
+            entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
 
             if not entry_time_str:
                 continue
 
-            entry_minutes = time_to_minutes(entry_time_str.split()[-1])
-            exit_minutes = time_to_minutes(exit_time_str.split()[-1]) if exit_time_str else end_minutes
+            entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+            sheet_name = entry_time.strftime("%Y-%m")
 
-            result, transition, new_entry_obj, new_exit_obj = determine_attendance(
-                entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index
-            )
+            try:
+                spreadsheet = client.open_by_key(course.get('course_sheet_id'))
+                sheet = spreadsheet.worksheet(sheet_name)
 
-            sheet.append_row([student_id, course_id, result, "Yes" if transition else "No"])
-
+                cell = sheet.find(student_index)
+                if cell:
+                    sheet.update_cell(cell.row, cell.col + 1, "○")
+            except Exception as e:
+                print(f"シート更新中にエラーが発生しました: {e}")
 
 # メイン処理
 def main():
-    initialize_firebase()
-    client = initialize_google_sheets()
-
     try:
-        sheet = client.open("出席記録").sheet1
-    except gspread.SpreadsheetNotFound:
-        print("スプレッドシート '出席記録' が見つかりません。")
-        return
-
-    students_data = get_data_from_firebase('Students')
-    courses_data = get_data_from_firebase('Courses')
-
-    if not students_data or not courses_data:
-        print("データが取得できませんでした。")
-        return
-
-    record_attendance(students_data, courses_data, sheet)
-
+        initialize_firebase()
+        client = initialize_google_sheets()
+        students_data = get_data_from_firebase('Students')
+        courses_data = get_data_from_firebase('Courses')
+        record_attendance(students_data, courses_data, client)
+    except Exception as e:
+        print(f"メイン処理中にエラーが発生しました: {e}")
 
 if __name__ == "__main__":
     main()
