@@ -4,7 +4,7 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-# Firebaseアプリの初期化（未初期化の場合のみ実行）
+# Firebaseアプリの初期化
 def initialize_firebase():
     if not firebase_admin._apps:
         print("Firebaseの初期化を実行します。")
@@ -44,8 +44,18 @@ def time_to_minutes(time_str):
         print(f"時刻変換中にエラーが発生しました: {e}")
         return None
 
-# 出席判定ロジック（修正済み）
-def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_id, course_index):
+# Firebaseに時刻を保存
+def save_time_to_firebase(path, time_obj):
+    try:
+        print(f"Firebaseにデータを保存します: {path} - {time_obj}")
+        ref = db.reference(path)
+        ref.set({'read_datetime': time_obj.strftime("%Y-%m-%d %H:%M:%S")})
+        print(f"{path} に保存しました。")
+    except Exception as e:
+        print(f"Firebaseへの保存中にエラーが発生しました: {e}")
+
+# 出席判定ロジック（仕様追加対応）
+def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index):
     print(f"出席判定: entry_minutes={entry_minutes}, exit_minutes={exit_minutes}, start_minutes={start_minutes}, end_minutes={end_minutes}")
     transition_occurred = False
 
@@ -93,14 +103,14 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
     print("欠席")
     return "×", transition_occurred
 
-# 出席を記録（修正済み）
+# 出席を記録
 def record_attendance(students_data, courses_data):
     if not students_data or not courses_data:
         print("学生データまたはコースデータが存在しません。")
         return
 
     print("\n出席記録を開始します。")
-    attendance_data = students_data.get('attendance', {}).get('students_id', {})
+    attendance_data = students_data.get('attendance', {}).get('student_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     student_info_data = students_data.get('student_info', {}).get('student_id', {})
     courses_list = courses_data.get('course_id', [])
@@ -153,7 +163,7 @@ def record_attendance(students_data, courses_data):
                 exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
                 exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
 
-            result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_id, course_index)
+            result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
             if transition:  # コースID2へ移行
