@@ -102,19 +102,19 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
 
         print("退室時間1を終了時間1に設定し、入室時間2と退室時間2を保存しました。")
         transition_occurred = True
-        return "○", transition_occurred
+        return "○", transition_occurred, new_entry_obj, new_exit_obj
 
     if entry_minutes <= start_minutes + 5:
         if exit_minutes >= end_minutes - 5:
-            return "○", transition_occurred
+            return "○", transition_occurred, None, None
         elif exit_minutes < end_minutes - 5:
             early_minutes = end_minutes - 5 - exit_minutes
-            return f"△早{early_minutes}分", transition_occurred
+            return f"△早{early_minutes}分", transition_occurred, None, None
     elif entry_minutes > start_minutes + 5:
         if exit_minutes >= end_minutes - 5:
             late_minutes = entry_minutes - (start_minutes + 5)
-            return f"△遅{late_minutes}分", transition_occurred
-    return "×", transition_occurred
+            return f"△遅{late_minutes}分", transition_occurred, None, None
+    return "×", transition_occurred, None, None
 
 # 出席記録
 def record_attendance(students_data, courses_data):
@@ -130,6 +130,8 @@ def record_attendance(students_data, courses_data):
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     student_info_data = students_data.get('student_info', {}).get('student_id', {})
     courses_list = courses_data.get('course_id', [])
+
+    temporary_entries = {}
 
     for student_id, attendance in attendance_data.items():
         print(f"\n学生ID: {student_id}")
@@ -165,29 +167,38 @@ def record_attendance(students_data, courses_data):
             entry_key = f'entry{course_index}'
             exit_key = f'exit{course_index}'
 
-            entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
-            if not entry_time_str:
-                print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
-                course_index += 1
-                continue
-
-            entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-            entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
-
-            exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
-            if not exit_time_str:
-                exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
-                save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", exit_time)
-                exit_minutes = end_minutes
+            if (student_id, course_index) in temporary_entries:
+                entry_minutes, exit_minutes = temporary_entries[(student_id, course_index)]
             else:
-                exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
-                exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
+                entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
+                if not entry_time_str:
+                    print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
+                    course_index += 1
+                    continue
 
-            result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index)
+                entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+                entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
+
+                exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
+                if not exit_time_str:
+                    exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
+                    save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", exit_time)
+                    exit_minutes = end_minutes
+                else:
+                    exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+                    exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
+
+            result, transition, new_entry_obj, new_exit_obj = determine_attendance_with_transition(
+                entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index
+            )
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
             if transition:
-                print(f"移行が発生しました。次のコース（ID: {course_index + 1}）を処理します。")
+                temporary_entries[(student_id, course_index + 1)] = (
+                    time_to_minutes(new_entry_obj.strftime("%H:%M")),
+                    time_to_minutes(new_exit_obj.strftime("%H:%M"))
+                )
+
             course_index += 1
 
 # メイン処理
