@@ -58,7 +58,7 @@ def check_and_mark_attendance(attendance, course, sheet, entry_label, course_id)
 # 出席を記録する関数
 def record_attendance(students_data, courses_data):
     # 各データを取得
-    attendance_data = students_data.get('attendance', {}).get('students_id', {})
+    attendance_data = students_data.get('attendance', {}).get('student_id', {})
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     student_index_data = students_data.get('student_info', {}).get('student_index', {})
     courses_list = courses_data.get('course_id', [])
