@@ -4,6 +4,7 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+
 # Firebaseアプリの初期化
 def initialize_firebase():
     if not firebase_admin._apps:
@@ -18,6 +19,7 @@ def initialize_firebase():
             print(f"Firebase初期化中にエラーが発生しました: {e}")
             raise
 
+
 # Google Sheets APIの初期化
 def initialize_google_sheets():
     print("Google Sheets APIのスコープを設定します。")
@@ -29,6 +31,7 @@ def initialize_google_sheets():
     except Exception as e:
         print(f"Google Sheets API初期化中にエラーが発生しました: {e}")
         raise
+
 
 # Firebaseからデータを取得する関数
 def get_data_from_firebase(path):
@@ -42,6 +45,7 @@ def get_data_from_firebase(path):
         print(f"Firebaseからデータを取得中にエラーが発生しました: {e}")
         return None
 
+
 # 時刻を分単位に変換
 def time_to_minutes(time_str):
     try:
@@ -51,6 +55,7 @@ def time_to_minutes(time_str):
     except Exception as e:
         print(f"時刻変換中にエラーが発生しました: {e}")
         return None
+
 
 # 分単位を時刻文字列に変換
 def minutes_to_time(minutes):
@@ -62,6 +67,7 @@ def minutes_to_time(minutes):
         print(f"分を時刻文字列に変換中にエラーが発生しました: {e}")
         return None
 
+
 # Firebaseに時刻を保存
 def save_time_to_firebase(path, time_obj):
     try:
@@ -72,14 +78,15 @@ def save_time_to_firebase(path, time_obj):
     except Exception as e:
         print(f"Firebaseへの保存中にエラーが発生しました: {e}")
 
+
 # 出席判定ロジック
 def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index):
     print(f"出席判定: entry_minutes={entry_minutes}, exit_minutes={exit_minutes}, start_minutes={start_minutes}, end_minutes={end_minutes}")
     transition_occurred = False
 
-    if exit_minutes > end_minutes + 5:  # 退室時間が終了時間+5分以降の場合
+    # ロジックは変更なし
+    if exit_minutes > end_minutes + 5:
         print("退室時間が終了時間+5分以降です。処理を開始します。")
-        
         final_exit_time = end_minutes
         final_exit_obj = datetime.datetime.now().replace(hour=final_exit_time // 60, minute=final_exit_time % 60)
         save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", final_exit_obj)
@@ -90,7 +97,7 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
 
         new_exit_obj = datetime.datetime.now().replace(hour=exit_minutes // 60, minute=exit_minutes % 60)
         save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index + 1}", new_exit_obj)
-        
+
         print("退室時間1を終了時間1に設定し、入室時間2と退室時間2を保存しました。")
         transition_occurred = True
         return "○", transition_occurred
@@ -107,6 +114,7 @@ def determine_attendance_with_transition(entry_minutes, exit_minutes, start_minu
             return f"△遅{late_minutes}分", transition_occurred
     return "×", transition_occurred
 
+
 # 出席を記録
 def record_attendance(students_data, courses_data):
     if not students_data or not courses_data:
@@ -121,12 +129,12 @@ def record_attendance(students_data, courses_data):
 
     for student_id, attendance in attendance_data.items():
         print(f"\n学生ID: {student_id}")
-        student_info = student_info_data.get(student_id)
+        student_info = student_info_data.get('student_id', {}).get(student_id)
         if not student_info:
             print(f"学生 {student_id} の情報が見つかりません。スキップします。")
             continue
 
-        course_ids = enrollment_data.get(student_id, {}).get('course_id', "").split(", ")
+        course_ids = enrollment_data.get('student_index', {}).get(student_info.get('student_index'), {}).get('course_id', "").split(", ")
 
         for course_index, course_id in enumerate(course_ids, start=1):
             print(f"コースID: {course_id}")
@@ -167,6 +175,7 @@ def record_attendance(students_data, courses_data):
             result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
+
 # メイン処理
 def main():
     try:
@@ -177,6 +186,7 @@ def main():
         record_attendance(students_data, courses_data)
     except Exception as e:
         print(f"メイン処理中にエラーが発生しました: {e}")
+
 
 if __name__ == "__main__":
     main()
