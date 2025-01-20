@@ -126,17 +126,24 @@ def record_attendance(students_data, courses_data):
         enrollment_info = enrollment_data.get(student_index, {})
         course_ids = enrollment_info.get('course_id', "").split(", ")
 
-        for course_index, course_id in enumerate(course_ids, start=1):
+        # コースごとに処理
+        course_index = 1  # コース用のインデックス
+        while course_index <= len(course_ids):
+            course_id = course_ids[course_index - 1]
             print(f"コースID: {course_id}")
+
+            # コースデータの取得と検証
             try:
                 course = courses_list[int(course_id)]
             except (ValueError, IndexError):
                 print(f"無効なコースID {course_id} が見つかりました。スキップします。")
+                course_index += 1
                 continue
 
             schedule = course.get('schedule', {}).get('time', '').split('~')
             if len(schedule) != 2:
                 print(f"コース {course_id} のスケジュール情報が不完全です。スキップします。")
+                course_index += 1
                 continue
 
             start_minutes = time_to_minutes(schedule[0])
@@ -145,16 +152,18 @@ def record_attendance(students_data, courses_data):
             entry_key = f'entry{course_index}'
             exit_key = f'exit{course_index}'
 
+            # 入室データの取得
             entry_time_str = attendance.get(entry_key, {}).get('read_datetime')
-            exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
-
             if not entry_time_str:
                 print(f"学生 {student_id} の {entry_key} データが見つかりません。次のコースに移行します。")
+                course_index += 1
                 continue
 
             entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
             entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
 
+            # 退室データの取得
+            exit_time_str = attendance.get(exit_key, {}).get('read_datetime')
             if not exit_time_str:
                 exit_time = entry_time.replace(hour=end_minutes // 60, minute=end_minutes % 60)
                 save_time_to_firebase(f"Students/attendance/student_id/{student_id}/exit{course_index}", exit_time)
@@ -163,12 +172,18 @@ def record_attendance(students_data, courses_data):
                 exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
                 exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
 
+            # 出席判定ロジックの実行
             result, transition = determine_attendance_with_transition(entry_minutes, exit_minutes, start_minutes, end_minutes, student_id, course_index)
             print(f"学生 {student_id} のコース {course_id} の判定結果: {result}")
 
-            if transition:  # コースID2へ移行
-                print("コースID2へ移行します。")
-                break
+            # 移行が発生した場合、次のコースへ進む（ループを継続）
+            if transition:
+                print(f"移行が発生しました。次のコース（ID: {course_index + 1}）を処理します。")
+                course_index += 1
+                continue
+
+            # 通常の次のコース処理
+            course_index += 1
 
 # メイン処理
 def main():
