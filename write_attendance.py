@@ -82,7 +82,7 @@ def record_attendance(students_data, courses_data):
             continue
 
         # スプレッドシートを開く
-        sheet = client.open_by_key(sheet_id).sheet2
+        sheet = client.open_by_key(sheet_id).sheet1
 
         # 各コースの出席を確認
         for course_id in course_ids:
