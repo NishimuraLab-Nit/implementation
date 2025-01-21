@@ -69,48 +69,8 @@ def time_to_minutes(time_str):
         print(f"[エラー] 時刻変換中にエラーが発生しました: {e}")
         return None
 
-# 分単位を時刻文字列に変換
-def minutes_to_time(minutes):
-    try:
-        print(f"分 '{minutes}' を時刻文字列に変換します...")
-        hours = minutes // 60
-        mins = minutes % 60
-        time_str = f"{hours:02}:{mins:02}"
-        print(f"[成功] 変換結果: {time_str}")
-        return time_str
-    except Exception as e:
-        print(f"[エラー] 分を時刻文字列に変換中にエラーが発生しました: {e}")
-        return None
-
-# Firebaseに時刻を保存
-def save_time_to_firebase(path, time_obj):
-    try:
-        print(f"Firebaseにデータを保存します: {path} - {time_obj}")
-        ref = db.reference(path)
-        ref.set({'read_datetime': time_obj.strftime("%Y-%m-%d %H:%M:%S")})
-        print(f"[成功] {path} に保存しました。")
-    except Exception as e:
-        print(f"[エラー] Firebaseへの保存中にエラーが発生しました: {e}")
-
-# 出席判定ロジック
-def determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes):
-    print(f"出席判定を開始します: entry={entry_minutes}, exit={exit_minutes}, start={start_minutes}, end={end_minutes}")
-    if entry_minutes <= start_minutes + 5 and exit_minutes >= end_minutes - 5:
-        print("[判定] 出席: ○")
-        return "○"
-    elif entry_minutes > start_minutes + 5 and exit_minutes >= end_minutes - 5:
-        late_minutes = entry_minutes - (start_minutes + 5)
-        print(f"[判定] 遅刻: △遅{late_minutes}分")
-        return f"△遅{late_minutes}分"
-    elif entry_minutes <= start_minutes + 5 and exit_minutes < end_minutes - 5:
-        early_minutes = end_minutes - 5 - exit_minutes
-        print(f"[判定] 早退: △早{early_minutes}分")
-        return f"△早{early_minutes}分"
-    print("[判定] 欠席: ×")
-    return "×"
-
 # 出席を記録
-def record_attendance(students_data, courses_data):
+def record_attendance(students_data, courses_data, client, spreadsheet_id, sheet_names):
     if not students_data or not courses_data:
         print("[エラー] 学生データまたはコースデータが存在しません。")
         return
@@ -120,6 +80,8 @@ def record_attendance(students_data, courses_data):
     enrollment_data = students_data.get('enrollment', {}).get('student_index', {})
     student_info_data = students_data.get('student_info', {}).get('student_id', {})
     courses_list = courses_data.get('course_id', [])
+
+    spreadsheet = client.open_by_key(spreadsheet_id)
 
     for student_id, attendance in attendance_data.items():
         print(f"\n[処理中] 学生ID: {student_id}")
@@ -134,9 +96,6 @@ def record_attendance(students_data, courses_data):
 
         print(f"[情報] 学生 {student_id} のコースID一覧: {course_ids}")
 
-        previous_entry = None
-        previous_exit = None
-
         for course_index, course_id in enumerate(course_ids, start=1):
             print(f"[処理中] コースID: {course_id}")
             try:
@@ -145,37 +104,41 @@ def record_attendance(students_data, courses_data):
                 print(f"[エラー] 無効なコースID {course_id} が見つかりました。スキップします。")
                 continue
 
-            schedule = course.get('schedule', {}).get('time', '').split('~')
-            if len(schedule) != 2:
-                print(f"[エラー] コース {course_id} のスケジュール情報が不完全です。スキップします。")
+            entry_time_str = attendance.get(f'entry{course_index}', {}).get('read_datetime')
+            if not entry_time_str:
+                print(f"[警告] 学生 {student_id} のエントリー時間が見つかりません。スキップします。")
                 continue
 
-            start_minutes = time_to_minutes(schedule[0])
-            end_minutes = time_to_minutes(schedule[1])
+            # 日付から月を取得
+            entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+            entry_month = entry_time.strftime("%m")
 
-            if previous_entry and previous_exit:
-                print("[情報] 前回のエントリー/退出データを使用します。")
-                entry_minutes = previous_entry
-                exit_minutes = previous_exit
-            else:
-                entry_time_str = attendance.get(f'entry{course_index}', {}).get('read_datetime')
-                exit_time_str = attendance.get(f'exit{course_index}', {}).get('read_datetime')
+            # 月に一致するシートを探す
+            matching_sheet = None
+            for sheet_name in sheet_names:
+                if entry_month in sheet_name:
+                    matching_sheet = sheet_name
+                    break
 
-                if not entry_time_str or not exit_time_str:
-                    print(f"[警告] 学生 {student_id} のエントリーまたは退室データが見つかりません。スキップします。")
-                    continue
+            if not matching_sheet:
+                print(f"[警告] 月 '{entry_month}' に一致するシートが見つかりません。スキップします。")
+                continue
 
-                entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-                exit_time = datetime.datetime.strptime(exit_time_str, "%Y-%m-%d %H:%M:%S")
+            print(f"[成功] シート '{matching_sheet}' にデータを記録します。")
 
-                entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
-                exit_minutes = time_to_minutes(exit_time.strftime("%H:%M"))
+            # シートを開く
+            worksheet = spreadsheet.worksheet(matching_sheet)
 
-            result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
-            print(f"[結果] 学生 {student_id} のコース {course_id} の判定結果: {result}")
+            # 列と行を計算
+            column = entry_time.day + 1
+            row = course_index + 1
 
-            previous_entry = entry_minutes
-            previous_exit = exit_minutes
+            # データを記録
+            try:
+                worksheet.update_cell(row, column, entry_time.strftime("%H:%M"))
+                print(f"[成功] シート '{matching_sheet}' のセル（{row}, {column}）にデータを記録しました。")
+            except Exception as e:
+                print(f"[エラー] データ記録中にエラーが発生しました: {e}")
 
 # メイン処理
 def main():
@@ -193,7 +156,7 @@ def main():
         sheet_names = get_sheet_names(client, spreadsheet_id)
 
         print("[処理開始] 出席記録を処理します...")
-        record_attendance(students_data, courses_data)
+        record_attendance(students_data, courses_data, client, spreadsheet_id, sheet_names)
     except Exception as e:
         print(f"[エラー] メイン処理中にエラーが発生しました: {e}")
 
