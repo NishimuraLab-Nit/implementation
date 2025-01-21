@@ -61,13 +61,16 @@ def get_sheet_names(client, spreadsheet_id):
 def time_to_minutes(time_str):
     try:
         print(f"時刻文字列 '{time_str}' を分単位に変換します...")
-        time_obj = datetime.datetime.strptime(time_str, "%H:%M")
+        if time_str.count(":") == 2:  # HH:MM:SS の場合
+            time_obj = datetime.datetime.strptime(time_str, "%H:%M:%S")
+        else:  # HH:MM の場合
+            time_obj = datetime.datetime.strptime(time_str, "%H:%M")
         minutes = time_obj.hour * 60 + time_obj.minute
         print(f"[成功] 変換結果: {minutes} 分")
         return minutes
     except Exception as e:
         print(f"[エラー] 時刻変換中にエラーが発生しました: {e}")
-        return None
+        return None  # デフォルト値を返す
 
 # 出席を記録
 def record_attendance(students_data, courses_data, client, sheet_names):
@@ -93,9 +96,6 @@ def record_attendance(students_data, courses_data, client, sheet_names):
         course_ids = enrollment_info.get('course_id', "").split(", ")
 
         print(f"[情報] 学生 {student_id} のコースID一覧: {course_ids}")
-        previous_entry = None
-        previous_exit = None
-
         for course_index, course_id in enumerate(course_ids, start=1):
             print(f"[処理中] コースID: {course_id}")
             try:
@@ -115,7 +115,7 @@ def record_attendance(students_data, courses_data, client, sheet_names):
             entry_time_str = attendance.get(f'entry{course_index}', {}).get('read_datetime')
             if not entry_time_str:
                 print(f"[警告] 学生 {student_id} のエントリー時間が見つかりません。次の学生へ移行します。")
-                break  # 次の学生へ移行
+                break
 
             entry_time = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
             entry_month = entry_time.strftime("%m")
@@ -134,7 +134,11 @@ def record_attendance(students_data, courses_data, client, sheet_names):
 
             # 判定
             entry_minutes = time_to_minutes(entry_time.strftime("%H:%M"))
-            exit_minutes = time_to_minutes(exit_time_str.split(" ")[1])
+            exit_minutes = time_to_minutes(exit_time_str.split(" ")[1]) if exit_time_str else None
+            if entry_minutes is None or exit_minutes is None:
+                print("[警告] 入退室時間が無効のためスキップします。")
+                continue
+
             result = determine_attendance(entry_minutes, exit_minutes, start_minutes, end_minutes)
 
             # 判定結果を記録
