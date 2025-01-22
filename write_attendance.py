@@ -69,52 +69,73 @@ def combine_date_and_time(date_dt, time_obj):
 # ---------------------
 def judge_attendance_for_course(entry_dt, exit_dt, start_dt, finish_dt):
     """
-    ① entry <= start+5分 かつ exit <= finish+5分 → 正常(○)
-    ② exit が finish+5分 以降 → 
-       - exit を finish に補正(exit=finish)
-       - 次コマ用 entry2 = finish+10分, exit2 = 元の exit
-       - コース1は 正常(○)
-    ③ exit が None → exit=finish, 次コマ entry2=finish+10分
-       - コース1は 正常(○)
+    出席判定ロジックまとめ:
+      # 欠席 (×):
+        - entry_dt >= finish_dt
+      # 正常出席 (○):
+        ① entry_dt <= start_dt+5min & exit_dt <= finish_dt+5min
+        ② exit_dt > finish_dt+5min
+        ③ exit_dt is None
+      # 早退 (△早):
+        entry_dt <= start_dt+5min & exit_dt < finish_dt-5min
+        "△早xx分" (xxは finish_dt - exit_dt)
+      # 遅刻 (△遅):
+        entry_dt > start_dt+5min & exit_dt <= finish_dt+5min
+        "△遅xx分" (xxは entry_dt - start_dt)
 
-    戻り値: ( status_str, updated_entry_dt, updated_exit_dt, next_course_data )
-      - next_course_data = (next_entry_dt, next_exit_dt) or None
+    戻り値:
+      (status_str, updated_entry_dt, updated_exit_dt, next_course_data)
+        - status_str: "×", "○", "△早xx分", "△遅xx分", "？" 等
+        - updated_entry_dt, updated_exit_dt: 補正した entry/exit
+        - next_course_data: (next_entry_dt, next_exit_dt) or None
+          (②,③ のときに生成)
     """
     td_5min  = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
 
-    # (1) ①: entry <= start+5分 & exit <= finish+5分
-    if entry_dt <= (start_dt + td_5min):
-        if exit_dt is not None:
-            if exit_dt <= (finish_dt + td_5min):
-                # 正常(○)
-                return "○", entry_dt, exit_dt, None
-        else:
-            # exit_dtが None の場合は下の③の処理へ行くので何もしない
-            pass
+    # (1) 欠席(×)
+    if entry_dt >= finish_dt:
+        return "×", entry_dt, exit_dt, None
 
-    # (2) exit_dt > finish+5分
-    if exit_dt is not None and exit_dt > (finish_dt + td_5min):
+    # (2) 正常出席(○) ①
+    if (entry_dt <= (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt <= (finish_dt + td_5min)):
+        # 正常出席
+        return "○", entry_dt, exit_dt, None
+
+    # (2) 正常出席(○) ② : exit_dt > finish_dt+5分
+    if (exit_dt is not None) and (exit_dt > (finish_dt + td_5min)):
         status_str = "○"
         original_exit = exit_dt
         updated_exit_dt = finish_dt
-        # 次コマ entry2 = finish+10分
+        # 次コマ entry = finish_dt+10分
         next_entry_dt = finish_dt + td_10min
-        # exit2 = 元の exit
-        next_exit_dt = original_exit
+        # 次コマ exit = original_exit
+        next_exit_dt  = original_exit
         return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    # (3) exit が None
+    # (2) 正常出席(○) ③ : exit_dt is None
     if exit_dt is None:
         status_str = "○"
         updated_exit_dt = finish_dt
-        # 次コマ entry2 = finish+10分
         next_entry_dt = finish_dt + td_10min
-        # exit2 はまだ無いので None
-        next_exit_dt = None
+        next_exit_dt  = None
         return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    # 上記どれにも当てはまらなかった場合、仕様外 → "？" を返す
+    # (3) 早退 (△早)
+    #   entry <= start+5分 かつ exit < finish-5分
+    #   xx分 = finish_dt - exit_dt
+    if (entry_dt <= (start_dt + td_5min)) and (exit_dt < (finish_dt - td_5min)):
+        delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
+        return f"△早{delta_min}分", entry_dt, exit_dt, None
+
+    # (4) 遅刻 (△遅)
+    #   entry_dt > start_dt+5分 かつ exit_dt <= finish_dt+5分
+    #   xx分 = entry_dt - start_dt
+    if (entry_dt > (start_dt + td_5min)) and (exit_dt <= (finish_dt + td_5min)):
+        delta_min = int((entry_dt - start_dt).total_seconds() // 60)
+        return f"△遅{delta_min}分", entry_dt, exit_dt, None
+
+    # いずれにも該当しない場合は "？"
     return "？", entry_dt, exit_dt, None
 
 # ---------------------
