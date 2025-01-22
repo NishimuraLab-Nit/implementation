@@ -19,7 +19,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_accou
 gclient = gspread.authorize(creds)
 
 # ---------------------
-# Firebaseアクセス
+# Firebaseアクセス関連
 # ---------------------
 def get_data_from_firebase(path):
     ref = db.reference(path)
@@ -58,10 +58,10 @@ def combine_date_and_time(date_dt, time_obj):
     )
 
 # ---------------------
-# 出席判定（例）
+# 出席判定ロジック
 # ---------------------
 def judge_attendance_for_course(entry_dt, exit_dt, start_dt, finish_dt):
-    td_5min = datetime.timedelta(minutes=5)
+    td_5min  = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
 
     # (1) 欠席(×)
@@ -102,29 +102,33 @@ def judge_attendance_for_course(entry_dt, exit_dt, start_dt, finish_dt):
     # その他
     return "？", entry_dt, exit_dt, None
 
+
 # ---------------------
 # メインフロー
 # ---------------------
 def process_attendance_and_write_sheet():
     attendance_data = get_data_from_firebase("Students/attendance/student_id")
     if not attendance_data:
-        print("attendanceデータがありません。終了します。")
+        print("attendance データがありません。終了します。")
         return
 
     courses_data = get_data_from_firebase("Courses/course_id")
     student_info_data = get_data_from_firebase("Students/student_info")
 
-    results_dict = {}  # {(student_index, idx, date_str): status}
+    results_dict = {}  # {(student_index, new_course_idx, date_str): status}
 
+    # -----------------
+    # 受講生ごとにループ
+    # -----------------
     for student_id, attendance_dict in attendance_data.items():
         if not isinstance(attendance_dict, dict):
             continue
 
-        # student_index
+        # student_index 取得
         student_index = None
-        if (student_info_data.get("student_id") and
-            student_id in student_info_data["student_id"] and
-            "student_index" in student_info_data["student_id"][student_id]):
+        if (student_info_data.get("student_id")
+            and student_id in student_info_data["student_id"]
+            and "student_index" in student_info_data["student_id"][student_id]):
             student_index = student_info_data["student_id"][student_id]["student_index"]
         if not student_index:
             continue
@@ -139,7 +143,7 @@ def process_attendance_and_write_sheet():
         if not course_id_list:
             continue
 
-        # entry/exit ペア
+        # entry/exit ペア取得
         entry_exit_pairs = []
         i = 1
         while True:
@@ -153,25 +157,27 @@ def process_attendance_and_write_sheet():
         if not entry_exit_pairs:
             continue
 
-        # 最初の entry_dt から base_date
+        # 最初の entry_dt
         first_entry_key, _ = entry_exit_pairs[0]
         first_entry_str = attendance_dict[first_entry_key].get("read_datetime", "")
         first_entry_dt = parse_datetime(first_entry_str)
         if not first_entry_dt:
             continue
+
         base_date = first_entry_dt.date()
-
-        pair_index = 0
+        # エントリー時点の曜日
+        #   例: "Monday", "Tuesday", ...
+        entry_weekday_str = first_entry_dt.strftime("%A")
 
         # -----------------
-        # コース順にループ
+        # 1) 曜日をチェックし、スキップされなかったコースだけを valid_courses に集める
         # -----------------
-        for idx, c_id_str in enumerate(course_id_list, start=1):
+        valid_courses = []
+        for c_id_str in course_id_list:
             try:
                 c_id_int = int(c_id_str)
             except:
                 continue
-
             if c_id_int <= 0 or c_id_int >= len(courses_data):
                 continue
 
@@ -180,22 +186,38 @@ def process_attendance_and_write_sheet():
             time_range_str = schedule_info.get("time", "")
             day_str = schedule_info.get("day", "")  # 例: "Monday"
 
+            # 曜日が不一致ならスキップ
+            if day_str and (day_str != entry_weekday_str):
+                # day_strが空の場合は特にスキップしない、としている
+                continue
+
+            # time_rangeが無いならスキップ
             if not time_range_str:
                 continue
 
-            # ★ ここで 曜日を比較して 一致しなければスキップ
-            # entry_dt の曜日: entry_dt.strftime("%A") → "Monday", "Tuesday", ...
-            entry_weekday_str = first_entry_dt.strftime("%A")  # 例: "Monday"
-            if day_str and (day_str != entry_weekday_str):
-                print(f"[DEBUG] 曜日不一致 → schedule day={day_str}, entry weekday={entry_weekday_str}. スキップ。")
-                continue
+            # validコースリストに追加
+            #   (c_id_int, time_range_str, day_str) など必要なものを入れておく
+            valid_courses.append((c_id_int, time_range_str, day_str))
 
+        # もし全スキップされて valid_coursesが空なら何もしない
+        if not valid_courses:
+            continue
+
+        # pair_index (entry_exit_pairsの何番目か)
+        pair_index = 0
+
+        # -----------------
+        # 2) valid_courses を new_course_idx で回す
+        # -----------------
+        for new_course_idx, (c_id_int, time_range_str, day_str) in enumerate(valid_courses, start=1):
+            # pair_index が足りなければ欠席扱いする
             if pair_index >= len(entry_exit_pairs):
-                # ペア不足 → 欠席
+                # ペア不足
                 absent_date = base_date.strftime("%Y-%m-%d")
-                results_dict[(student_index, idx, absent_date)] = "×"
+                results_dict[(student_index, new_course_idx, absent_date)] = "×"
                 continue
 
+            # entry/exit 取得
             ekey, xkey = entry_exit_pairs[pair_index]
             pair_index += 1
 
@@ -208,11 +230,12 @@ def process_attendance_and_write_sheet():
             exit_dt  = parse_datetime(exit_dt_str)
 
             if not entry_dt:
-                # entry がなければ 欠席
+                # entry無 → 欠席
                 absent_date = base_date.strftime("%Y-%m-%d")
-                results_dict[(student_index, idx, absent_date)] = "×"
+                results_dict[(student_index, new_course_idx, absent_date)] = "×"
                 continue
 
+            # コース開始/終了
             start_t, finish_t = parse_hhmm_range(time_range_str)
             if not start_t or not finish_t:
                 continue
@@ -220,42 +243,46 @@ def process_attendance_and_write_sheet():
             start_dt = combine_date_and_time(base_date, start_t)
             finish_dt = combine_date_and_time(base_date, finish_t)
 
-            # 出欠判定
             status, new_entry_dt, new_exit_dt, next_course_data = judge_attendance_for_course(
                 entry_dt, exit_dt, start_dt, finish_dt
             )
 
             updates = {}
-            if new_entry_dt and new_entry_dt != entry_dt:
+            # entry更新
+            if new_entry_dt and (new_entry_dt != entry_dt):
                 updates[ekey] = {
                     "read_datetime": new_entry_dt.strftime("%Y-%m-%d %H:%M:%S"),
                     "serial_number": entry_rec.get("serial_number", "")
                 }
                 attendance_dict[ekey] = updates[ekey]
 
-            if new_exit_dt and new_exit_dt != exit_dt:
+            # exit更新
+            if new_exit_dt and (new_exit_dt != exit_dt):
                 updates[xkey] = {
                     "read_datetime": new_exit_dt.strftime("%Y-%m-%d %H:%M:%S"),
                     "serial_number": exit_rec.get("serial_number", "")
                 }
                 attendance_dict[xkey] = updates[xkey]
 
+            # 次コマ作成(② or ③)
             if next_course_data:
                 next_ekey = f"entry{pair_index+1}"
                 next_xkey = f"exit{pair_index+1}"
                 next_e, next_x = next_course_data
-                if next_e is not None:
+                if next_e:
                     updates[next_ekey] = {
                         "read_datetime": next_e.strftime("%Y-%m-%d %H:%M:%S"),
                         "serial_number": entry_rec.get("serial_number", "")
                     }
                     attendance_dict[next_ekey] = updates[next_ekey]
-                if next_x is not None:
+                if next_x:
                     updates[next_xkey] = {
                         "read_datetime": next_x.strftime("%Y-%m-%d %H:%M:%S"),
                         "serial_number": exit_rec.get("serial_number", "")
                     }
                     attendance_dict[next_xkey] = updates[next_xkey]
+
+                # ローカルペアに追加
                 entry_exit_pairs.append((next_ekey, next_xkey))
 
             if updates:
@@ -263,7 +290,8 @@ def process_attendance_and_write_sheet():
                 update_data_in_firebase(att_path, updates)
 
             date_str = base_date.strftime("%Y-%m-%d")
-            results_dict[(student_index, idx, date_str)] = status
+            # 結果を results_dict に格納
+            results_dict[(student_index, new_course_idx, date_str)] = status
 
     # -----------------
     # シート書き込み
@@ -284,21 +312,22 @@ def process_attendance_and_write_sheet():
         if not std_result_items:
             continue
 
-        for (s_idx, course_idx, date_str), status_val in std_result_items.items():
+        for (s_idx, new_course_idx, date_str), status_val in std_result_items.items():
             yyyymm = date_str[:7]  # "YYYY-MM"
-            day = int(date_str[8:10])
-
+            day = int(date_str[8:10])  # (%d)
             try:
                 ws = sh.worksheet(yyyymm)
             except gspread.exceptions.WorksheetNotFound:
                 ws = sh.add_worksheet(title=yyyymm, rows=50, cols=50)
 
-            # row=course_idx+1, col=day+1  (あるいはその逆)
-            row = course_idx + 1
+            # 行 = new_course_idx +1
+            # 列 = 日付 +1
+            row = new_course_idx + 1
             col = day + 1
             ws.update_cell(row, col, status_val)
 
-    print("=== 出席判定処理 & シート書き込み完了 ===")
+    print("=== 出席判定処理＆シート書き込み完了 ===")
+
 
 if __name__ == "__main__":
     process_attendance_and_write_sheet()
