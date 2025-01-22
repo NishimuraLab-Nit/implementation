@@ -66,7 +66,12 @@ def main():
                 print(f"学生ID {student_id} に有効なコースIDが見つかりませんでした。")
                 continue
 
-            schedule = courses_data.get(int(course_id), {}).get("schedule", {}).get("time", "")
+            course_data = next((course for course in courses_data if course.get("id") == int(course_id)), None)
+            if not course_data:
+                print(f"コースID {course_id} に該当するデータが見つかりませんでした。")
+                continue
+
+            schedule = course_data.get("schedule", {}).get("time", "")
             if not schedule:
                 print(f"コースID {course_id} にスケジュールが見つかりませんでした。")
                 continue
