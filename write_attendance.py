@@ -61,87 +61,77 @@ def combine_date_time(base_date, hour, minute):
 def judge_attendance(entry_dt, exit_dt, start_dt, finish_dt):
     """
     entry_dt: 入室時刻(datetime)
-    exit_dt : 退室時刻(datetime) / 存在しない場合は None
+    exit_dt: 退室時刻(datetime) / 無い場合は None
     start_dt: コース開始時刻(datetime)
     finish_dt:コース終了時刻(datetime)
-    
-    戻り値: (attend_status, fix_entry_dt, fix_exit_dt, note)
-      - attend_status : "〇", "✕", "△早", "△遅" など
-      - fix_entry_dt  : 変更後の entry (Noneの時は変更なし)
-      - fix_exit_dt   : 変更後の exit  (Noneの時は変更なし)
-      - note          : 追加メモ文字列(例: "△早10分", "△遅5分" 等) / 無しなら空文字
+
+    戻り値:
+      (attend_status, fix_entry_next, fix_exit_cur, fix_exit_next, note)
+        - attend_status : "〇", "✕", "△早", "△遅" など
+        - fix_entry_next: 次コースのentryを強制的に書き換える場合の時刻 (Noneなら修正不要)
+        - fix_exit_cur  : このコースのexitを修正する場合の時刻 (Noneなら修正不要)
+        - fix_exit_next : 次コースのexitを強制的に作成する場合の時刻 (Noneなら不要)
+        - note          : 備考("△早10分"など)
     """
-    # 5分単位のタイムデルタ
+    import datetime
     delta_5min = datetime.timedelta(minutes=5)
     delta_10min = datetime.timedelta(minutes=10)
 
-    # entry, exit が None の場合への対応
-    # entry は必須(実際にはないと判定不能)だが、exitがない場合は想定あり
+    # entry_dt が無い場合は欠席扱い
     if entry_dt is None:
-        # entryが全くない場合は欠席扱いとする(仕様例に合わせて)
-        return "✕", None, None, ""
-
-    # exitがNoneの場合は実際の時刻が押し忘れの可能性があるため、ここでは None として処理し、
-    # 後続ロジックで必要に応じて強制設定する。
+        return ("✕", None, None, None, "")
 
     # -----------------------
-    # 欠席判定
+    # ② exit_dt >= finish_dt + 5分
     # -----------------------
-    # 「entry1がexit1以降であれば欠席と判定」との例仕様ですが、
-    # 通常は "entry_dt > exit_dt" という整合の取れない場合などを想定。
-    if exit_dt and entry_dt >= exit_dt:
-        # entryの方がexitより後=>実質出席していないとみなし "✕"
-        return "✕", None, None, ""
+    # 「一旦 exit1 を old_exit に保存、exit1=finish1, entry2=finish1+10分, exit2=old_exit」
+    # コース1は正常出席"〇"扱い
+    if (exit_dt is not None) and (exit_dt >= finish_dt + delta_5min) and (entry_dt <= start_dt + delta_5min):
+        old_exit = exit_dt
+        fix_exit_cur = finish_dt            # exit1 を強制的に授業終了時刻へ
+        fix_entry_next = finish_dt + delta_10min  # 次コースの entry (entry2)
+        fix_exit_next = old_exit           # 次コースの exit (exit2) = 元の退室時刻
+
+        return ("〇", fix_entry_next, fix_exit_cur, fix_exit_next, "")
 
     # -----------------------
-    # 出席 (〇)
+    # ③ exit_dt が存在しない
     # -----------------------
-    # 条件1) entryが start+5分以内、かつ exitが finish+5分以内 => 正常出席
-    if (entry_dt <= start_dt + delta_5min) and \
-       (exit_dt is not None) and (exit_dt <= finish_dt + delta_5min):
-        return "〇", None, None, ""
-
-    # 条件2) exitが finish+5分以降 => exitを finish に切り上げる
-    if (entry_dt <= start_dt + delta_5min) and \
-       (exit_dt is not None) and (exit_dt > finish_dt + delta_5min):
-        # exitを強制修正: finish_dt に変更
-        fix_exit = finish_dt
-        # 次コースの entry は finish_dt + 10分後を強制設定する場合
-        # (ここでは実際に返すのみ。Firebaseに保存するのは呼び出し元で)
+    # 「exit1=finish1, entry2=finish1+10分」
+    # コース1は正常出席"〇"扱い
+    if exit_dt is None and (entry_dt <= start_dt + delta_5min):
+        fix_exit_cur = finish_dt
         fix_entry_next = finish_dt + delta_10min
-        return "〇", fix_entry_next, fix_exit, ""
+        fix_exit_next = None  # 次コースの exit は特に上書きしない
 
-    # 条件3) exitが存在しない(押し忘れ) => exitを finish_dt に、次コースの entry を finish_dt+10分後に
-    if (entry_dt <= start_dt + delta_5min) and (exit_dt is None):
-        fix_exit = finish_dt
-        fix_entry_next = finish_dt + delta_10min
-        return "〇", fix_entry_next, fix_exit, ""
+        return ("〇", fix_entry_next, fix_exit_cur, fix_exit_next, "")
 
     # -----------------------
-    # 早退 (△早)
+    # それ以外の判定例
     # -----------------------
-    # entryが start+5分以内 かつ exitが finish-5分以前
-    # 「△早xx分」 -> (finish - exit)を分換算して記録
+    # 早退 (△早)、遅刻 (△遅) などの既存ロジックは以下に続く
+    # ※一例で記載しています。実際の条件はご要望どおりに調整してください。
     if (entry_dt <= start_dt + delta_5min) and \
        (exit_dt is not None) and (exit_dt <= finish_dt - delta_5min):
+        # 早退(△早)
         diff_min = int((finish_dt - exit_dt).total_seconds() // 60)
         note_str = f"△早{diff_min}分"
-        return "△早", None, None, note_str
+        return ("△早", None, None, None, note_str)
 
-    # -----------------------
-    # 遅刻 (△遅)
-    # -----------------------
-    # entryが start+5分以降 かつ exitが finish+5分以内
-    # 「△遅xx分」-> (entry - start)を分換算して記録
     if (entry_dt > start_dt + delta_5min) and \
        (exit_dt is not None) and (exit_dt <= finish_dt + delta_5min):
+        # 遅刻(△遅)
         diff_min = int((entry_dt - start_dt).total_seconds() // 60)
         note_str = f"△遅{diff_min}分"
-        return "△遅", None, None, note_str
+        return ("△遅", None, None, None, note_str)
 
-    # 上記どれにも当てはまらない場合、最も近い状態として欠席扱い or 要件外
-    # 仕様例にないパターンは "✕" としておく。
-    return "✕", None, None, ""
+    # 正常出席(〇) の基本パターン
+    if (entry_dt <= start_dt + delta_5min) and \
+       (exit_dt is not None) and (exit_dt <= finish_dt + delta_5min):
+        return ("〇", None, None, None, "")
+
+    # どの条件にも当てはまらない場合 => 欠席(✕) とみなす
+    return ("✕", None, None, None, "")
 
 # ===============================
 # メイン処理
