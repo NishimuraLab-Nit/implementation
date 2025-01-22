@@ -105,7 +105,7 @@ def main():
     attendance_data = get_data_from_firebase("Students/attendance/student_id")
     student_info_data = get_data_from_firebase("Students/student_info/student_index")
     enrollment_data = get_data_from_firebase("Students/enrollment/student_index")
-    courses_data = get_data_from_firebase("Courses")
+    courses_data = get_data_from_firebase("Courses").get("course_id", [])
 
     if not attendance_data or not student_info_data or not enrollment_data or not courses_data:
         print("Failed to fetch required data. Exiting...")
@@ -128,9 +128,9 @@ def main():
                 print(f"No valid course ID found for Student ID: {student_id}")
                 continue
     
-            # コースデータの取得（リスト内の有効な辞書のみを処理）
+            # コースデータの取得
             course_data = next(
-                (course for course in courses_data if isinstance(course, dict) and course.get("id") == int(course_id)),
+                (course for course in courses_data if isinstance(course, dict) and str(course.get("id")) == course_id),
                 None
             )
             if not course_data:
@@ -161,8 +161,8 @@ def main():
                 sheet_id = student_info_data.get(student_index, {}).get("sheet_id", "")
                 if sheet_id:
                     sheet = client.open_by_key(sheet_id).worksheet(datetime.datetime.now().strftime("%Y-%m"))
-                    day_column = entry_time.day + 1 if entry_time else 0
-                    course_row = int(course_id) + 1
+                    day_column = entry_time.day if entry_time else 0
+                    course_row = int(course_id)
                     update_google_sheet(sheet, course_row, day_column, status)
 
 
