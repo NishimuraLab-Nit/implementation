@@ -115,45 +115,48 @@ def main():
     for student_id, attendance in attendance_data.items():
         print(f"Processing attendance data for Student ID: {student_id}...")
         student_index = get_data_from_firebase(f"Students/student_info/student_id/{student_id}/student_index")
-
+    
         if not student_index:
             print(f"No student index found for Student ID: {student_id}")
             continue
-
+    
         course_ids = enrollment_data.get(student_index, {}).get("course_id", "").split(", ")
         print(f"Student ID {student_id} is enrolled in courses: {course_ids}")
-
+    
         for course_id in course_ids:
             if not course_id:
                 print(f"No valid course ID found for Student ID: {student_id}")
                 continue
-
-            # コースデータの取得
-            course_data = next((course for course in courses_data if course.get("id") == int(course_id)), None)
+    
+            # コースデータの取得（リスト内の有効な辞書のみを処理）
+            course_data = next(
+                (course for course in courses_data if isinstance(course, dict) and course.get("id") == int(course_id)),
+                None
+            )
             if not course_data:
                 print(f"No course data found for Course ID: {course_id}")
                 continue
-
+    
             # スケジュールの取得
             schedule = course_data.get("schedule", {}).get("time", "")
             if not schedule:
                 print(f"No schedule found for Course ID: {course_id}")
                 continue
-
+    
             start_time, end_time = parse_time(schedule)
-
+    
             # 出席データの判定と更新
             for entry_key, entry_data in attendance.items():
                 if not entry_key.startswith("entry"):
                     continue
-
+    
                 entry_time = parse_datetime(entry_data["read_datetime"])
                 exit_key = entry_key.replace("entry", "exit")
                 exit_time = parse_datetime(attendance.get(exit_key, {}).get("read_datetime"))
-
+    
                 status = evaluate_attendance(entry_time, exit_time, start_time, end_time)
                 print(f"Entry Time: {entry_time}, Exit Time: {exit_time}, Status: {status}")
-
+    
                 # Googleシートの更新
                 sheet_id = student_info_data.get(student_index, {}).get("sheet_id", "")
                 if sheet_id:
