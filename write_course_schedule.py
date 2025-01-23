@@ -155,7 +155,7 @@ def main():
 
         student_names = get_student_names(course_id)
         if not student_names:
-            print(f"コース {course_id} に学生名が見つかりませんでした。")
+            print(f"コース {course_id} に学生名が見つかりませんでした。ループを終了して次に進みます。")
             continue
 
         print(f"コース {course_id} のスプレッドシートを更新しています...")
