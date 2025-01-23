@@ -77,36 +77,20 @@ def get_students_by_course(course_id):
 
     return student_names, attendance_numbers
 
-# ユニークなシート名を生成
-def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
-    existing_sheets = execute_with_retry(
-        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
-    ).get("sheets", [])
-    sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
-    title = base_title
-    counter = 1
-    while title in sheet_titles:
-        title = f"{base_title} ({counter})"
-        counter += 1
-    return title
-
 # シート更新リクエストを準備
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
         print("学生名リストが空です。")
         return []
 
-    # ユニークなシート名を生成
-    base_title = f"{year}-{str(month).zfill(2)}"
-    sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
-
     # シートを追加するリクエスト
+    base_title = f"{year}-{str(month).zfill(2)}"
     add_sheet_request = {
-        "addSheet": {"properties": {"title": sheet_title}}
+        "addSheet": {"properties": {"title": base_title}}
     }
     requests = [add_sheet_request]
 
-    # 新しいシートの作成
+    # シート作成後にそのIDを取得
     response = execute_with_retry(
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
@@ -121,62 +105,52 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    # 列幅、行高の設定
-    requests.append({
-        "updateDimensionProperties": {
-            "range": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 126},
-            "properties": {"pixelSize": 120},
+    # 列幅、行高さ、背景色、罫線の設定
+    requests += [
+        {"updateDimensionProperties": {
+            "range": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 2},
+            "properties": {"pixelSize": 100},
             "fields": "pixelSize"
-        }
-    })
-    requests.append({
-        "updateDimensionProperties": {
-            "range": {"sheetId": new_sheet_id, "dimension": "ROWS", "startIndex": 0, "endIndex": 1000},
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": new_sheet_id, "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
             "properties": {"pixelSize": 30},
             "fields": "pixelSize"
-        }
-    })
+        }},
+        {"updateBorders": {
+            "range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": len(student_names) + 2, "startColumnIndex": 0, "endColumnIndex": 2},
+            "top": {"style": "SOLID", "width": 1},
+            "bottom": {"style": "SOLID", "width": 1},
+            "left": {"style": "SOLID", "width": 1},
+            "right": {"style": "SOLID", "width": 1},
+            "innerHorizontal": {"style": "SOLID", "width": 1},
+            "innerVertical": {"style": "SOLID", "width": 1}
+        }}
+    ]
 
-    # 学生名と出席番号を記載
-    requests.append({
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
-            "fields": "userEnteredValue"
-        }
-    })
-    requests.append({
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
-            "fields": "userEnteredValue"
-        }
-    })
+    # 学生データをスプレッドシートに記入
+    requests.append({"updateCells": {
+        "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
+        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
+        "fields": "userEnteredValue"
+    }})
+    requests.append({"updateCells": {
+        "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
+        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
+        "fields": "userEnteredValue"
+    }})
 
     for i, (name, number) in enumerate(zip(student_names, attendance_numbers)):
-        requests.append({
-            "updateCells": {
-                "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
-                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
-                "fields": "userEnteredValue"
-            }
-        })
-        requests.append({
-            "updateCells": {
-                "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
-                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
-                "fields": "userEnteredValue"
-            }
-        })
-
-    # シート全体のデフォルト背景色を白に設定
-    requests.append({
-        "repeatCell": {
-            "range": {"sheetId": new_sheet_id},
-            "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1, "green": 1, "blue": 1}}},
-            "fields": "userEnteredFormat.backgroundColor"
-        }
-    })
+        requests.append({"updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
+            "fields": "userEnteredValue"
+        }})
+        requests.append({"updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
+            "fields": "userEnteredValue"
+        }})
 
     return requests
 
@@ -185,12 +159,13 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
+    # 各コースに対応する処理を実行
     courses = get_firebase_data("Courses/course_id")
     if not courses or not isinstance(courses, list):
         print("Courses データが見つかりません。")
         return
 
-    for course_id in range(1, len(courses)):
+    for course_id in range(1, len(courses)):  # 1から開始
         print(f"Processing Course ID: {course_id}")
         sheet_id = get_sheet_id(course_id)
         if not sheet_id:
