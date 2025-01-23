@@ -76,16 +76,35 @@ def get_students_by_course(course_id):
 
     return student_names, attendance_numbers
 
+# ユニークなシート名を生成
+def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
+    # 既存のシート名を取得
+    existing_sheets = execute_with_retry(
+        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+    ).get("sheets", [])
+    existing_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
+
+    # ユニークなタイトルを生成
+    title = base_title
+    counter = 1
+    while title in existing_titles:
+        title = f"{base_title} ({counter})"
+        counter += 1
+    return title
+
 # シート更新リクエストを準備
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
         print("学生名リストが空です。")
         return []
 
-    # シートを追加するリクエスト
+    # ユニークなシート名を生成
     base_title = f"{year}-{str(month).zfill(2)}"
+    sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
+
+    # シートを追加するリクエスト
     add_sheet_request = {
-        "addSheet": {"properties": {"title": base_title}}
+        "addSheet": {"properties": {"title": sheet_title}}
     }
     requests = [add_sheet_request]
 
