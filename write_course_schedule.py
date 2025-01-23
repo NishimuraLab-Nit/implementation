@@ -2,6 +2,7 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google_auth_transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
@@ -34,136 +35,120 @@ def get_firebase_data(ref_path):
         print(f"Error fetching data from Firebase: {e}")
         return None
 
-def get_all_course_ids():
-    print("Fetching all course IDs...")
-    courses = get_firebase_data("Courses/course_id")
-    if not courses or not isinstance(courses, list):
-        print("No course IDs found or invalid data format.")
-        return []
-    course_ids = [i for i in range(1, len(courses)) if courses[i]]
-    print(f"Course IDs fetched: {course_ids}")
-    return course_ids
+def execute_with_retry(request, retries=3, delay=5):
+    for attempt in range(retries):
+        try:
+            print(f"Executing request, attempt {attempt + 1}/{retries}...")
+            return request.execute()
+        except (HttpError, socket.timeout) as e:
+            print(f"Request failed: {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
 
-def get_sheet_metadata(service, spreadsheet_id):
-    print(f"Fetching sheet metadata for spreadsheet ID: {spreadsheet_id}")
-    try:
-        spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        sheets = spreadsheet.get("sheets", [])
-        sheet_metadata = {sheet["properties"]["title"]: sheet["properties"]["sheetId"] for sheet in sheets}
-        print(f"Sheet metadata fetched: {sheet_metadata}")
-        return sheet_metadata
-    except HttpError as e:
-        print(f"Error fetching sheet metadata: {e}")
-        return {}
+def create_cell_update_request(sheet_id, row_index, column_index, value):
+    print(f"Creating cell update request for sheet ID {sheet_id}, row {row_index}, column {column_index}, value {value}")
+    return {
+        "updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(value)}}]}],
+            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
+            "fields": "userEnteredValue"
+        }
+    }
 
-def get_sheet_id(course_id):
-    print(f"Fetching sheet ID for course ID: {course_id}")
-    course_data = get_firebase_data(f"Courses/course_id/{course_id}")
-    if course_data and "course_sheet_id" in course_data:
-        print(f"Found sheet ID: {course_data['course_sheet_id']}")
-        return course_data["course_sheet_id"]
-    print(f"Sheet ID not found for course ID {course_id}.")
-    return None
+def create_sheet_request(sheet_title):
+    print(f"Creating request to add sheet titled {sheet_title}")
+    return {
+        "addSheet": {
+            "properties": {"title": sheet_title}
+        }
+    }
 
-def get_student_names(course_id):
-    print(f"Fetching student names for course ID: {course_id}")
-    enrollment_data = get_firebase_data(f"Students/enrollment/course_id/{course_id}")
-    if not enrollment_data or "student_index" not in enrollment_data:
-        print(f"No student index found for course ID {course_id}.")
-        return []
+def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
+    print(f"Generating unique sheet title based on base title {base_title}")
+    existing_sheets = execute_with_retry(
+        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+    ).get("sheets", [])
+    sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
+    title = base_title
+    counter = 1
+    while title in sheet_titles:
+        title = f"{base_title} ({counter})"
+        counter += 1
+    print(f"Generated unique title: {title}")
+    return title
 
-    student_indices = enrollment_data["student_index"].split(",")
-    student_names = []
+def prepare_update_requests(sheets_service, spreadsheet_id, sheet_title, student_names):
+    print(f"Preparing update requests for spreadsheet ID {spreadsheet_id}, sheet title {sheet_title}")
+    sheet_metadata = execute_with_retry(
+        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+    )
+    sheet_id = None
+    for sheet in sheet_metadata.get("sheets", []):
+        if sheet["properties"]["title"] == sheet_title:
+            sheet_id = sheet["properties"]["sheetId"]
+            break
 
-    for index in student_indices:
-        print(f"Fetching student info for index: {index.strip()}")
-        student_info = get_firebase_data(f"Students/student_info/student_index/{index.strip()}")
-        if student_info and "student_name" in student_info:
-            student_names.append(student_info["student_name"])
-            print(f"Found student name: {student_info['student_name']}")
-        else:
-            print(f"Student info not found for index: {index.strip()}")
-
-    print(f"Student names fetched: {student_names}")
-    return student_names
-
-def create_sheet_requests(sheet_title, sheet_metadata, student_names):
-    print(f"Creating sheet setup requests for sheet title: {sheet_title}")
-    sheet_id = sheet_metadata.get(sheet_title)
     if sheet_id is None:
-        print(f"Sheet title '{sheet_title}' not found in metadata.")
+        print(f"Sheet {sheet_title} does not exist. Adding new sheet.")
+        add_sheet_request = create_sheet_request(sheet_title)
+        execute_with_retry(
+            sheets_service.spreadsheets().batchUpdate(
+                spreadsheetId=spreadsheet_id,
+                body={"requests": [add_sheet_request]}
+            )
+        )
+        sheet_metadata = execute_with_retry(
+            sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+        )
+        for sheet in sheet_metadata.get("sheets", []):
+            if sheet["properties"]["title"] == sheet_title:
+                sheet_id = sheet["properties"]["sheetId"]
+                break
+
+    if sheet_id is None:
+        print(f"Failed to create or find sheet {sheet_title}.")
         return []
 
     requests = []
-
-    # Set column widths
-    requests.append({
-        "updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-            "properties": {"pixelSize": 50},
-            "fields": "pixelSize"
-        }
-    })
-
-    # Add student names to the sheet
     for i, name in enumerate(student_names):
-        print(f"Adding student name '{name}' to row {i + 1}, column 0")
-        requests.append({
-            "updateCells": {
-                "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
-                "start": {"sheetId": sheet_id, "rowIndex": i + 1, "columnIndex": 0},
-                "fields": "userEnteredValue"
-            }
-        })
-    print("Sheet setup requests created.")
+        requests.append(create_cell_update_request(sheet_id, i + 1, 0, name))
+
+    print("Update requests prepared.")
     return requests
 
-def execute_requests(service, spreadsheet_id, requests):
-    print("Executing batch update requests...")
-    try:
-        response = service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": requests}
-        ).execute()
-        print("Batch update executed successfully.")
-        return response
-    except HttpError as e:
-        print(f"Error executing batch update: {e}")
-        return None
-
 def main():
-    print("Starting main process...")
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    course_ids = get_all_course_ids()
-    if not course_ids:
-        print("No courses to process.")
+    class_indices = get_firebase_data('Class/class_index')
+    if not class_indices or not isinstance(class_indices, dict):
+        print("Class indices not found or invalid.")
         return
 
-    for course_id in course_ids:
-        print(f"Processing course ID: {course_id}")
-        spreadsheet_id = get_sheet_id(course_id)
+    for class_index, class_data in class_indices.items():
+        spreadsheet_id = class_data.get("class_sheet_id")
         if not spreadsheet_id:
-            print(f"No spreadsheet ID found for course ID {course_id}. Ending loop.")
-            break
+            print(f"Spreadsheet ID not found for class {class_index}.")
+            continue
 
-        sheet_metadata = get_sheet_metadata(sheets_service, spreadsheet_id)
-        if not sheet_metadata:
-            print(f"No sheet metadata found for spreadsheet ID {spreadsheet_id}. Ending loop.")
-            break
-
-        student_names = get_student_names(course_id)
+        student_names = get_firebase_data(f"Students/enrollment/course_id/{class_index}/student_index")
         if not student_names:
-            print(f"No student names found for course ID {course_id}. Ending loop.")
-            break
+            print(f"No student names found for class {class_index}.")
+            continue
 
-        sheet_title = "Sheet1"  # Replace with actual sheet title if needed
-        print(f"Preparing requests for course ID {course_id}...")
-        requests = create_sheet_requests(sheet_title, sheet_metadata, student_names)
+        student_names = student_names.split(",")
+        sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, f"Class_{class_index}")
+        requests = prepare_update_requests(sheets_service, spreadsheet_id, sheet_title, student_names)
         if requests:
-            execute_requests(sheets_service, spreadsheet_id, requests)
-        print(f"Finished processing course ID: {course_id}\n")
+            execute_with_retry(
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=spreadsheet_id,
+                    body={"requests": requests}
+                )
+            )
+            print(f"Spreadsheet {spreadsheet_id} updated successfully for class {class_index}.")
 
 if __name__ == "__main__":
     main()
