@@ -2,6 +2,7 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
@@ -76,13 +77,14 @@ def get_students_by_course(course_id):
 
     return student_names, attendance_numbers
 
-# ユニークなシート名を生成
 def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
+    """
+    ユニークなシート名を生成する。既存のシート名と重複しないようにする。
+    """
     existing_sheets = execute_with_retry(
         sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
     ).get("sheets", [])
     sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
-
     title = base_title
     counter = 1
     while title in sheet_titles:
@@ -90,18 +92,23 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
         counter += 1
     return title
 
-# 行列の高さや日付、色を含むシートの更新リクエストを準備
+
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
+    """
+    スプレッドシート更新のリクエストを準備する。
+    """
     if not student_names:
         print("学生名リストが空です。")
         return []
 
-    # ベースタイトルに基づいてユニークなシート名を生成
+    # ユニークなシート名を生成
     base_title = f"{year}-{str(month).zfill(2)}"
     sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
 
     # シートを追加するリクエスト
-    add_sheet_request = {"addSheet": {"properties": {"title": sheet_title}}}
+    add_sheet_request = {
+        "addSheet": {"properties": {"title": sheet_title}}
+    }
     requests = [add_sheet_request]
 
     # シート作成後にそのIDを取得
@@ -119,59 +126,99 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    # 必要な列数を確保する
-    total_columns_needed = 2 + len(attendance_numbers) * 4
+    # 行列の高さや長さを設定
+    requests.extend([
+        {"updateDimensionProperties": {
+            "range": {"sheetId": new_sheet_id, "dimension": "ROWS", "startIndex": 0, "endIndex": len(student_names) + 2},
+            "properties": {"pixelSize": 30},
+            "fields": "pixelSize"
+        }},
+        {"updateDimensionProperties": {
+            "range": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 130},
+            "properties": {"pixelSize": 50},
+            "fields": "pixelSize"
+        }}
+    ])
+
+    # 学生データと日付をスプレッドシートに記入
     requests.append({
-        "appendDimension": {
-            "sheetId": new_sheet_id,
-            "dimension": "COLUMNS",
-            "length": total_columns_needed
+        "updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
+            "fields": "userEnteredValue"
+        }
+    })
+    requests.append({
+        "updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
+            "fields": "userEnteredValue"
         }
     })
 
-    # 学生データと日付をスプレッドシートに記入
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
-        "fields": "userEnteredValue"
-    }})
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
-        "fields": "userEnteredValue"
-    }})
-
     for i, (name, number) in enumerate(zip(student_names, attendance_numbers)):
-        requests.append({"updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
-            "fields": "userEnteredValue"
-        }})
-        requests.append({"updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
-            "fields": "userEnteredValue"
-        }})
+        requests.append({
+            "updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
+                "fields": "userEnteredValue"
+            }
+        })
+        requests.append({
+            "updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
+                "fields": "userEnteredValue"
+            }
+        })
 
-    # 日付と時限を追加
+    # 日付と授業時限を記入
+    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     current_date = start_date
     start_column = 2
+
     while current_date <= end_date:
         weekday = current_date.weekday()
-        date_string = f"{current_date.strftime('%m/%d')} ({['月', '火', '水', '木', '金', '土', '日'][weekday]})"
-        requests.append({"updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": date_string}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": start_column},
-            "fields": "userEnteredValue"
-        }})
-        start_column += 1
+        date_string = f"{current_date.strftime('%m/%d')} {japanese_weekdays[weekday]}"
+        requests.append({
+            "updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": date_string}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": start_column},
+                "fields": "userEnteredValue"
+            }
+        })
+
+        # 土日の色付け
+        if weekday == 5:  # 土曜日
+            color = {"red": 0.8, "green": 0.9, "blue": 1.0}
+        elif weekday == 6:  # 日曜日
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8}
+        else:
+            color = None
+
+        if color:
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": new_sheet_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": len(student_names) + 2,
+                        "startColumnIndex": start_column,
+                        "endColumnIndex": start_column + 1
+                    },
+                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                    "fields": "userEnteredFormat.backgroundColor"
+                }
+            })
+
         current_date += timedelta(days=1)
+        start_column += 1
 
     return requests
 
-# メイン処理
+
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
@@ -182,23 +229,31 @@ def main():
         return
 
     for course_id in range(1, len(courses)):
+        print(f"Processing Course ID: {course_id}")
         sheet_id = get_sheet_id(course_id)
         if not sheet_id:
             continue
 
         student_names, attendance_numbers = get_students_by_course(course_id)
         if not student_names:
+            print(f"Course ID {course_id} の学生リストが空です。")
             continue
 
         for month in range(1, 13):
+            print(f"Processing month: {month} for Course ID: {course_id}")
             requests = prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, sheet_id)
-            if requests:
-                execute_with_retry(
-                    sheets_service.spreadsheets().batchUpdate(
-                        spreadsheetId=sheet_id,
-                        body={'requests': requests}
-                    )
+            if not requests:
+                print(f"月 {month} のシートを更新するリクエストがありません。")
+                continue
+
+            execute_with_retry(
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body={'requests': requests}
                 )
+            )
+            print(f"月 {month} のシートを正常に更新しました。")
 
 if __name__ == "__main__":
     main()
+
