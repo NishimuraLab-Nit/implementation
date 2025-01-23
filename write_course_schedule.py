@@ -2,7 +2,7 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from google_auth_transport.requests import Request
+from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
