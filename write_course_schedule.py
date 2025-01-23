@@ -169,10 +169,15 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    student_indices = get_firebase_data('Students/enrollment/course_id')
+    student_indices = get_firebase_data('Students/enrollment/student_index')
+    print("取得したデータ:", student_indices)  
+
     if not student_indices or not isinstance(student_indices, dict):
         print("Firebaseから学生インデックスを取得できませんでした。")
         return
+
+    for student_index, student_data in student_indices.items():
+        print(f"Processing student index: {student_index}")
 
     for course_id, course_data in student_indices.items():
         student_indices = course_data.get('student_index', [])
