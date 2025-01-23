@@ -30,7 +30,9 @@ def create_cell_update_request(sheet_id, row_index, column_index, value):
 def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
     return {
         "updateDimensionProperties": {
-@@ -37,210 +37,113 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
+            "range": {"sheetId": sheet_id, "dimension": dimension, "startIndex": start_index, "endIndex": end_index},
+            "properties": {"pixelSize": pixel_size},
+            "fields": "pixelSize"
         }
     }
 
