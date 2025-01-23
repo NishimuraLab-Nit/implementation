@@ -105,19 +105,26 @@ def get_course_sheet_and_student_data(course_id):
     return sheet_id, student_names
 
 # シート更新リクエスト準備
-def prepare_update_requests(sheet_id, student_names, month, year=2025):
-    if not student_names:
-        print("学生名リストが空です。")
-        return []
+def prepare_update_requests(sheets_service, spreadsheet_id, sheet_title, student_names, month, year=2025):
+    """シート更新リクエストを準備"""
+    # シートIDを取得または新規作成
+    sheet_id = get_sheet_id(sheets_service, spreadsheet_id, sheet_title)
+    if not sheet_id:
+        print(f"シート '{sheet_title}' が見つかりません。新規作成します。")
+        sheet_id = create_and_get_sheet_id(sheets_service, spreadsheet_id, sheet_title)
+        if not sheet_id:
+            print(f"シート '{sheet_title}' の作成に失敗しました。")
+            return []
 
-    base_title = f"{year}-{str(month).zfill(2)}"
-    requests = [create_sheet_request(base_title)]
-    # 学生名を記載するリクエストを作成
+    # リクエストの準備
+    requests = []
+
+    # 学生名を記載
     requests.append(create_cell_update_request(sheet_id, 0, 0, "学生名"))
     for i, name in enumerate(student_names):
         requests.append(create_cell_update_request(sheet_id, i + 1, 0, name))
 
-    # 日付と曜日の設定
+    # 日付と曜日を記載
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     current_date = start_date
@@ -127,7 +134,7 @@ def prepare_update_requests(sheet_id, student_names, month, year=2025):
         weekday = current_date.weekday()
         date_string = f"{current_date.strftime('%m/%d')} ({['月', '火', '水', '木', '金', '土', '日'][weekday]})"
         requests.append(create_cell_update_request(sheet_id, 0, column, date_string))
-        if weekday in [5, 6]:
+        if weekday in [5, 6]:  # 土日
             color = {"red": 0.9, "green": 0.9, "blue": 1.0} if weekday == 5 else {"red": 1.0, "green": 0.9, "blue": 0.9}
             requests.append(create_weekend_color_request(sheet_id, 0, len(student_names) + 1, column, column + 1, color))
         column += 1
