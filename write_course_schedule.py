@@ -181,33 +181,43 @@ def main():
         if not student_name:
             print(f"学生インデックス {student_index} に学生名が見つかりませんでした。")
             continue
-
-        # 学生のコースIDを取得
+    
+        # 学生のコースIDを取得（カンマ区切りからリストに変換）
         student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-        if not student_course_ids or not isinstance(student_course_ids, list):
+        if not student_course_ids:
             print(f"学生インデックス {student_index} に関連付けられたコースIDが見つかりませんでした。")
             continue
-
+    
+        # コースIDが文字列の場合、リストに変換
+        if isinstance(student_course_ids, str):
+            student_course_ids = student_course_ids.split(', ')
+    
         for course_id in student_course_ids:
+            course_id = course_id.strip()  # 余分な空白を除去
+            if not course_id:
+                print(f"無効なコースIDが見つかりました: {course_id}")
+                continue
+    
             # 各コースIDからシートIDを取得
-            sheet_id = get_firebase_data(f'Courses/course_id/{course_id}/course_sheet_id')
+            course_sheet_id = get_firebase_data(f'Courses/course_id/{course_id}/course_sheet_id')
             if not course_sheet_id:
                 print(f"コースID {course_id} に関連付けられたシートIDが見つかりませんでした。")
                 continue
-
+    
             for month in range(1, 13):
                 print(f"Processing month: {month} for student index: {student_index} and course_id: {course_id}")
-                requests = prepare_update_requests(sheet_id, student_name, month, sheets_service, sheet_id)
+                requests = prepare_update_requests(course_sheet_id, student_name, month, sheets_service, course_sheet_id)
                 if not requests:
                     print(f"月 {month} のシートを更新するリクエストがありません。")
                     continue
-
+    
                 # シートを更新
                 sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
+                    spreadsheetId=course_sheet_id,
                     body={'requests': requests}
                 ).execute()
                 print(f"月 {month} のシートを正常に更新しました。")
+
 
 if __name__ == "__main__":
     main()
