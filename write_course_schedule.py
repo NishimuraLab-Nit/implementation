@@ -129,17 +129,6 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     ]
 
     # 学生データをスプレッドシートに記入
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
-        "fields": "userEnteredValue"
-    }})
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
-        "fields": "userEnteredValue"
-    }})
-
     for i, (name, number) in enumerate(zip(student_names, attendance_numbers)):
         requests.append({"updateCells": {
             "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
@@ -151,6 +140,54 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
             "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
             "fields": "userEnteredValue"
         }})
+
+    # 日付と授業時限を設定
+    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    start_date = datetime(year, month, 1)
+    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    current_date = start_date
+    start_column = 2
+    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]
+
+    while current_date <= end_date:
+        weekday = current_date.weekday()
+        date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
+        requests.append({"updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": date_string}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": start_column},
+            "fields": "userEnteredValue"
+        }})
+
+        for period_index, period in enumerate(period_labels):
+            requests.append({"updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": period}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": 1, "columnIndex": start_column + period_index},
+                "fields": "userEnteredValue"
+            }})
+
+        if weekday == 5:
+            color = {"red": 0.8, "green": 0.9, "blue": 1.0}
+        elif weekday == 6:
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8}
+        else:
+            color = None
+
+        if color:
+            requests.append({"repeatCell": {
+                "range": {
+                    "sheetId": new_sheet_id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 35,
+                    "startColumnIndex": start_column,
+                    "endColumnIndex": start_column + len(period_labels)
+                },
+                "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                "fields": "userEnteredFormat.backgroundColor"
+            }})
+
+        start_column += len(period_labels)
+        current_date += timedelta(days=1)
 
     return requests
 
