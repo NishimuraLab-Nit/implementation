@@ -2,7 +2,6 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
@@ -25,152 +24,53 @@ def get_firebase_data(ref_path):
     try:
         return db.reference(ref_path).get()
     except Exception as e:
-        print(f"Firebase data retrieval error: {e}")
+        print(f"Firebaseデータ取得エラー: {e}")
         return None
-
-def execute_with_retry(request, retries=3, delay=5):
-    for attempt in range(retries):
-        try:
-            return request.execute()
-        except (HttpError, socket.timeout) as e:
-            print(f"Request failed ({attempt + 1}/{retries}): {e}")
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                raise
-
-def get_existing_sheet_titles(sheets_service, spreadsheet_id):
-    response = execute_with_retry(
-        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
-    )
-    sheets = response.get("sheets", [])
-    return [sheet["properties"]["title"] for sheet in sheets]
-
-def generate_unique_sheet_title(base_title, existing_titles):
-    title = base_title
-    counter = 1
-    while title in existing_titles:
-        title = f"{base_title} ({counter})"
-        counter += 1
-    return title
 
 def get_sheet_id(course_id):
-    course_data = get_firebase_data(f'Courses/course_id/{course_id}/course_sheet_id')
-    if not course_data:
-        print(f"Course sheet ID not found for course_id: {course_id}")
-        return None
-    return course_data
+    course_data = get_firebase_data(f'Courses/course_id/{course_id}')
+    if course_data:
+        return course_data.get('course_sheet_id', None)
+    return None
 
 def get_student_names(course_id):
     enrollment_data = get_firebase_data(f'Students/enrollment/course_id/{course_id}/student_index')
     if not enrollment_data:
-        print(f"No students enrolled in course_id: {course_id}")
         return []
 
-    student_indices = [index.strip() for index in enrollment_data.split(",")]
+    student_indices = [index.strip() for index in enrollment_data.split(',')]
     student_names = []
 
     for student_index in student_indices:
-        student_info = get_firebase_data(f'Students/student_info/student_index/{student_index}/student_name')
+        student_info = get_firebase_data(f'Students/student_info/{student_index}')
         if student_info:
-            student_names.append(student_info)
-        else:
-            print(f"Student name not found for student_index: {student_index}")
+            student_name = student_info.get('student_name')
+            if student_name:
+                student_names.append(student_name)
 
     return student_names
-
-def create_sheet_and_update_data(sheets_service, spreadsheet_id, student_names, month):
-    year = datetime.now().year
-    base_title = f"{year}-{str(month).zfill(2)}"
-
-    # Get existing sheet titles and generate a unique title
-    existing_titles = get_existing_sheet_titles(sheets_service, spreadsheet_id)
-    sheet_title = generate_unique_sheet_title(base_title, existing_titles)
-
-    # Create a new sheet
-    requests = [{
-        "addSheet": {
-            "properties": {
-                "title": sheet_title
-            }
-        }
-    }]
-
-    response = execute_with_retry(
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": requests}
-        )
-    )
-
-    new_sheet_id = response['replies'][0]['addSheet']['properties']['sheetId']
-
-    # Update the sheet with student names and attendance numbers
-    requests = []
-    requests.append({
-        "updateCells": {
-            "rows": [
-                {
-                    "values": [
-                        {"userEnteredValue": {"stringValue": "AN"}},
-                        {"userEnteredValue": {"stringValue": "Student Name"}}
-                    ]
-                }
-            ],
-            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
-            "fields": "userEnteredValue"
-        }
-    })
-
-    for i, student_name in enumerate(student_names):
-        requests.append({
-            "updateCells": {
-                "rows": [
-                    {
-                        "values": [
-                            {"userEnteredValue": {"numberValue": i + 1}},
-                            {"userEnteredValue": {"stringValue": student_name}}
-                        ]
-                    }
-                ],
-                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
-                "fields": "userEnteredValue"
-            }
-        })
-
-    execute_with_retry(
-        sheets_service.spreadsheets().batchUpdate(
-            spreadsheetId=spreadsheet_id,
-            body={"requests": requests}
-        )
-    )
-    print(f"Sheet {sheet_title} created and updated successfully.")
 
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    class_indices = get_firebase_data('Class/class_index')
-    if not class_indices:
-        print("No classes found in Firebase.")
+    course_ids = get_firebase_data('Courses/course_id')
+    if not course_ids:
+        print("コースデータが見つかりませんでした。")
         return
 
-    for class_key, class_data in class_indices.items():
-        course_ids = [int(cid.strip()) for cid in class_data.get("course_id", "").split(",")]
-        spreadsheet_id = class_data.get("class_sheet_id")
+    for course_id in range(1, len(course_ids)):
+        sheet_id = get_sheet_id(course_id)
+        if not sheet_id:
+            print(f"コース {course_id} のシートIDが見つかりません。")
+            continue
 
-        for course_id in course_ids:
-            sheet_id = get_sheet_id(course_id)
-            if not sheet_id:
-                continue
+        student_names = get_student_names(course_id)
+        if not student_names:
+            print(f"コース {course_id} の学生データが見つかりません。")
+            continue
 
-            student_names = get_student_names(course_id)
-            if not student_names:
-                continue
-
-            for month in range(1, 13):
-                print(f"Processing sheet for month: {month}")
-                create_sheet_and_update_data(sheets_service, spreadsheet_id, student_names, month)
+        print(f"コース {course_id}: シートID = {sheet_id}, 学生数 = {len(student_names)}")
 
 if __name__ == "__main__":
     main()
