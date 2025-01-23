@@ -2,6 +2,7 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
@@ -78,21 +79,18 @@ def get_students_by_course(course_id):
 
 # ユニークなシート名を生成
 def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
-    # 既存のシート名を取得
     existing_sheets = execute_with_retry(
         sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
     ).get("sheets", [])
-    existing_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
-
-    # ユニークなタイトルを生成
+    sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
     title = base_title
     counter = 1
-    while title in existing_titles:
+    while title in sheet_titles:
         title = f"{base_title} ({counter})"
         counter += 1
     return title
 
-# シート更新リクエストを準備
+# 行列の高さや色、日付を含むシートの更新リクエストを準備
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
         print("学生名リストが空です。")
@@ -103,9 +101,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
 
     # シートを追加するリクエスト
-    add_sheet_request = {
-        "addSheet": {"properties": {"title": sheet_title}}
-    }
+    add_sheet_request = {"addSheet": {"properties": {"title": sheet_title}}}
     requests = [add_sheet_request]
 
     # シート作成後にそのIDを取得
@@ -123,86 +119,93 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    # 行列の幅や高さの設定
-    requests.extend([
-        {
-            "updateDimensionProperties": {
-                "range": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
-                "properties": {"pixelSize": 50},
-                "fields": "pixelSize"
-            }
-        },
-        {
-            "updateDimensionProperties": {
-                "range": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
-                "properties": {"pixelSize": 150},
-                "fields": "pixelSize"
-            }
-        },
-        {
-            "updateDimensionProperties": {
-                "range": {"sheetId": new_sheet_id, "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
-                "properties": {"pixelSize": 30},
-                "fields": "pixelSize"
-            }
-        }
-    ])
+    # 学生データと日付をスプレッドシートに記入
+    requests = []
+    requests.append({"updateCells": {
+        "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
+        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
+        "fields": "userEnteredValue"
+    }})
+    requests.append({"updateCells": {
+        "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
+        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
+        "fields": "userEnteredValue"
+    }})
 
-    # 学生データをスプレッドシートに記入
     for i, (name, number) in enumerate(zip(student_names, attendance_numbers)):
-        requests.append({
-            "updateCells": {
-                "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
-                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
-                "fields": "userEnteredValue"
-            }
-        })
-        requests.append({
-            "updateCells": {
-                "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
-                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
-                "fields": "userEnteredValue"
-            }
-        })
+        requests.append({"updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
+            "fields": "userEnteredValue"
+        }})
+        requests.append({"updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
+            "fields": "userEnteredValue"
+        }})
 
-    # 日付と週末の色付けを設定
+    # 日付と時限を追加
+    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
     current_date = start_date
     start_column = 2
+    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]
 
     while current_date <= end_date:
         weekday = current_date.weekday()
-        date_string = current_date.strftime("%Y-%m-%d")
-        requests.append({
-            "updateCells": {
-                "rows": [{"values": [{"userEnteredValue": {"stringValue": date_string}}]}],
-                "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": start_column},
-                "fields": "userEnteredValue"
-            }
-        })
+        date_string = f"{current_date.strftime('%m/%d')} ({japanese_weekdays[weekday]})"
+        requests.append({"updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": date_string}}]}],
+            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": start_column},
+            "fields": "userEnteredValue"
+        }})
 
-        # 週末の色付け
-        if weekday in (5, 6):  # 土曜 or 日曜
-            color = {"red": 0.9, "green": 0.8, "blue": 0.8} if weekday == 6 else {"red": 0.8, "green": 0.9, "blue": 1.0}
+        for period_index, period in enumerate(period_labels):
+            requests.append({"updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": period}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": 1, "columnIndex": start_column + period_index},
+                "fields": "userEnteredValue"
+            }})
+
+        # 土日のセルに色を付ける
+        if weekday == 5:  # 土曜日
+            color = {"red": 0.8, "green": 0.9, "blue": 1.0}
+        elif weekday == 6:  # 日曜日
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8}
+        else:
+            color = None
+
+        if color:
             requests.append({
                 "repeatCell": {
                     "range": {
                         "sheetId": new_sheet_id,
-                        "startRowIndex": 1,
-                        "endRowIndex": len(student_names) + 1,
+                        "startRowIndex": 0,
+                        "endRowIndex": len(student_names) + 2,
                         "startColumnIndex": start_column,
-                        "endColumnIndex": start_column + 1
+                        "endColumnIndex": start_column + len(period_labels)
                     },
                     "cell": {"userEnteredFormat": {"backgroundColor": color}},
                     "fields": "userEnteredFormat.backgroundColor"
                 }
             })
 
-        start_column += 1
+        start_column += len(period_labels)
         current_date += timedelta(days=1)
 
+    # シート全体の背景色を黒で設定
+    requests.append({
+        "repeatCell": {
+            "range": {"sheetId": new_sheet_id, "startRowIndex": len(student_names) + 2, "endRowIndex": 1000, "startColumnIndex": 0, "endColumnIndex": 1000},
+            "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0, "green": 0, "blue": 0}}},
+            "fields": "userEnteredFormat.backgroundColor"
+        }
+    })
+
     return requests
+
 
 # メイン処理
 def main():
