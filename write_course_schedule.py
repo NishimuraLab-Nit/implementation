@@ -95,6 +95,7 @@ def prepare_update_requests(course_sheet_id, attendance_number, student_name, mo
 
     base_title = f"{year}-{str(month).zfill(2)}"
     add_sheet_request = create_sheet_request(base_title)
+    print(f"Adding sheet with title: {base_title}")  # デバッグ出力
     requests.append(add_sheet_request)
 
     response = sheets_service.spreadsheets().batchUpdate(
@@ -102,10 +103,13 @@ def prepare_update_requests(course_sheet_id, attendance_number, student_name, mo
         body={'requests': [add_sheet_request]}
     ).execute()
 
+    print(f"Google Sheets API response: {response}")  # デバッグ出力
+
     new_sheet_id = None
     for reply in response.get('replies', []):
         if 'addSheet' in reply:
             new_sheet_id = reply['addSheet']['properties']['sheetId']
+    print(f"新しいシートID: {new_sheet_id}")  # デバッグ出力
     if new_sheet_id is None:
         print("新しいシートIDを取得できませんでした。")
         return requests
