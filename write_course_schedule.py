@@ -5,10 +5,14 @@ from datetime import datetime, timedelta
 
 # Firebase初期化
 def initialize_firebase():
-    firebase_cred = credentials.Certificate("firebase-adminsdk.json")
-    initialize_app(firebase_cred, {
-        'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-    })
+    try:
+        firebase_cred = credentials.Certificate("firebase-adminsdk.json")
+        initialize_app(firebase_cred, {
+            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+        })
+        print("Firebase初期化成功")
+    except Exception as e:
+        print(f"Firebase初期化に失敗しました: {e}")
 
 # Firebaseからデータを取得する関数
 def get_firebase_data(ref_path):
@@ -20,9 +24,14 @@ def get_firebase_data(ref_path):
 
 # Google Sheets APIサービスの初期化
 def get_google_sheets_service():
-    scopes = ['https://www.googleapis.com/auth/spreadsheets']
-    google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
-    return build('sheets', 'v4', credentials=google_creds)
+    try:
+        scopes = ['https://www.googleapis.com/auth/spreadsheets']
+        google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
+        print("Google Sheets API初期化成功")
+        return build('sheets', 'v4', credentials=google_creds)
+    except Exception as e:
+        print(f"Google Sheets API初期化に失敗しました: {e}")
+        return None
 
 # シート作成リクエスト
 def create_sheet_request(sheet_title):
@@ -70,65 +79,71 @@ def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_co
 
 # シート設定リクエスト準備
 def prepare_sheet_requests(sheet_title, sheets_service, spreadsheet_id, student_indices, year=2025, month=1):
-    add_sheet_request = create_sheet_request(sheet_title)
-    response = sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={"requests": [add_sheet_request]}
-    ).execute()
+    try:
+        add_sheet_request = create_sheet_request(sheet_title)
+        response = sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": [add_sheet_request]}
+        ).execute()
 
-    # 新しいシートIDを取得
-    new_sheet_id = next(
-        (reply['addSheet']['properties']['sheetId'] for reply in response.get('replies', [])
-         if 'addSheet' in reply), None)
-    if not new_sheet_id:
-        print("新しいシートのIDを取得できませんでした。")
+        # 新しいシートIDを取得
+        new_sheet_id = next(
+            (reply['addSheet']['properties']['sheetId'] for reply in response.get('replies', [])
+             if 'addSheet' in reply), None)
+        if not new_sheet_id:
+            print("新しいシートのIDを取得できませんでした。")
+            return []
+
+        # リクエストの準備
+        requests = [
+            create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
+            create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 150),
+            create_dimension_request(new_sheet_id, "COLUMNS", 2, 33, 100),
+            create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
+            create_cell_update_request(new_sheet_id, 0, 0, "AN"),
+            create_cell_update_request(new_sheet_id, 0, 1, "Student Name"),
+        ]
+
+        # 学生データを設定
+        for row_index, (student_index, student_data) in enumerate(student_indices.items(), start=1):
+            attendance_number = student_data.get(f"{student_index}/attendance_number", "")
+            student_name = student_data.get("student_name", "")
+            requests.append(create_cell_update_request(new_sheet_id, row_index, 0, str(attendance_number)))
+            requests.append(create_cell_update_request(new_sheet_id, row_index, 1, student_name))
+
+        # 日付列の設定
+        start_date = datetime(year, month, 1)
+        end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+        current_date = start_date
+        while current_date <= end_date:
+            col_index = current_date.day + 1
+            weekday = current_date.weekday()
+            date_string = current_date.strftime('%m/%d')
+            requests.append(create_cell_update_request(new_sheet_id, 0, col_index, date_string))
+
+            # 土日の背景色
+            if weekday == 5:
+                requests.append(create_weekend_color_request(new_sheet_id, 1, 1000, col_index, col_index + 1,
+                                                             {"red": 0.8, "green": 0.9, "blue": 1.0}))
+            elif weekday == 6:
+                requests.append(create_weekend_color_request(new_sheet_id, 1, 1000, col_index, col_index + 1,
+                                                             {"red": 1.0, "green": 0.8, "blue": 0.8}))
+
+            current_date += timedelta(days=1)
+
+        return requests
+    except Exception as e:
+        print(f"シート設定リクエストの準備に失敗しました: {e}")
         return []
-
-    # 列幅・行高の設定
-    requests = [
-        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
-        create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 150),
-        create_dimension_request(new_sheet_id, "COLUMNS", 2, 33, 100),
-        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
-        create_cell_update_request(new_sheet_id, 0, 0, "AN"),
-        create_cell_update_request(new_sheet_id, 0, 1, "Student Name"),
-    ]
-
-    # 学生データを設定
-    for row_index, (student_index, student_data) in enumerate(student_indices.items(), start=1):
-        attendance_number = student_data.get(f"{student_index}/attendance_number", "")
-        student_name = student_data.get("student_name", "")
-        requests.append(create_cell_update_request(new_sheet_id, row_index, 0, str(attendance_number)))
-        requests.append(create_cell_update_request(new_sheet_id, row_index, 1, student_name))
-
-    # 日付列の設定
-    start_date = datetime(year, month, 1)
-    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
-    current_date = start_date
-    while current_date <= end_date:
-        col_index = current_date.day + 1
-        weekday = current_date.weekday()
-        date_string = current_date.strftime('%m/%d')
-        requests.append(create_cell_update_request(new_sheet_id, 0, col_index, date_string))
-
-        # 土日の背景色
-        if weekday == 5:
-            requests.append(create_weekend_color_request(new_sheet_id, 1, 1000, col_index, col_index + 1,
-                                                         {"red": 0.8, "green": 0.9, "blue": 1.0}))
-        elif weekday == 6:
-            requests.append(create_weekend_color_request(new_sheet_id, 1, 1000, col_index, col_index + 1,
-                                                         {"red": 1.0, "green": 0.8, "blue": 0.8}))
-
-        current_date += timedelta(days=1)
-
-    return requests
 
 # メイン処理
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
-    
+    if not sheets_service:
+        return
+
     # 実際のスプレッドシートIDを入力
     spreadsheet_id = "1A2B3C4D5E6F7G8H9I0J"  # 実際のIDに置き換え
 
@@ -148,11 +163,14 @@ def main():
         return
 
     # Google Sheetsを更新
-    sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={"requests": requests}
-    ).execute()
-    print(f"シート {sheet_title} が正常に設定されました。")
+    try:
+        sheets_service.spreadsheets().batchUpdate(
+            spreadsheetId=spreadsheet_id,
+            body={"requests": requests}
+        ).execute()
+        print(f"シート {sheet_title} が正常に設定されました。")
+    except Exception as e:
+        print(f"Google Sheetsの更新に失敗しました: {e}")
 
 if __name__ == "__main__":
     main()
