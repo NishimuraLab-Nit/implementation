@@ -89,7 +89,7 @@ def prepare_sheet_requests(sheet_title, sheets_service, spreadsheet_id, student_
 
     # 各学生の attendance_number と名前を設定
     for row_index, (student_index, student_data) in enumerate(student_indices.items(), start=1):
-        attendance_number = student_data.get("attendance_number", "")
+        attendance_number = student_data.get(f"{student_index}/attendance_number", "")
         student_name = student_data.get("student_name", "")
         requests.append(create_cell_update_request(new_sheet_id, row_index, 0, str(attendance_number)))  # AN列
         requests.append(create_cell_update_request(new_sheet_id, row_index, 1, student_name))  # Student Name列
