@@ -2,7 +2,6 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
@@ -105,30 +104,84 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    # 学生データと日付をスプレッドシートに記入
-    requests = []
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
-        "fields": "userEnteredValue"
-    }})
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
-        "fields": "userEnteredValue"
-    }})
+    # 行列の幅や高さの設定
+    requests.extend([
+        {
+            "updateDimensionProperties": {
+                "range": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+                "properties": {"pixelSize": 50},
+                "fields": "pixelSize"
+            }
+        },
+        {
+            "updateDimensionProperties": {
+                "range": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+                "properties": {"pixelSize": 150},
+                "fields": "pixelSize"
+            }
+        },
+        {
+            "updateDimensionProperties": {
+                "range": {"sheetId": new_sheet_id, "dimension": "ROWS", "startIndex": 0, "endIndex": 1},
+                "properties": {"pixelSize": 30},
+                "fields": "pixelSize"
+            }
+        }
+    ])
 
+    # 学生データをスプレッドシートに記入
     for i, (name, number) in enumerate(zip(student_names, attendance_numbers)):
-        requests.append({"updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
-            "fields": "userEnteredValue"
-        }})
-        requests.append({"updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
-            "fields": "userEnteredValue"
-        }})
+        requests.append({
+            "updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
+                "fields": "userEnteredValue"
+            }
+        })
+        requests.append({
+            "updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
+                "fields": "userEnteredValue"
+            }
+        })
+
+    # 日付と週末の色付けを設定
+    start_date = datetime(year, month, 1)
+    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    current_date = start_date
+    start_column = 2
+
+    while current_date <= end_date:
+        weekday = current_date.weekday()
+        date_string = current_date.strftime("%Y-%m-%d")
+        requests.append({
+            "updateCells": {
+                "rows": [{"values": [{"userEnteredValue": {"stringValue": date_string}}]}],
+                "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": start_column},
+                "fields": "userEnteredValue"
+            }
+        })
+
+        # 週末の色付け
+        if weekday in (5, 6):  # 土曜 or 日曜
+            color = {"red": 0.9, "green": 0.8, "blue": 0.8} if weekday == 6 else {"red": 0.8, "green": 0.9, "blue": 1.0}
+            requests.append({
+                "repeatCell": {
+                    "range": {
+                        "sheetId": new_sheet_id,
+                        "startRowIndex": 1,
+                        "endRowIndex": len(student_names) + 1,
+                        "startColumnIndex": start_column,
+                        "endColumnIndex": start_column + 1
+                    },
+                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                    "fields": "userEnteredFormat.backgroundColor"
+                }
+            })
+
+        start_column += 1
+        current_date += timedelta(days=1)
 
     return requests
 
