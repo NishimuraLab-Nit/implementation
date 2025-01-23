@@ -2,7 +2,6 @@ from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
 import time
@@ -83,6 +82,7 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
         sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
     ).get("sheets", [])
     sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
+
     title = base_title
     counter = 1
     while title in sheet_titles:
@@ -90,13 +90,13 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
         counter += 1
     return title
 
-# 行列の高さや色、日付を含むシートの更新リクエストを準備
+# 行列の高さや日付、色を含むシートの更新リクエストを準備
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
         print("学生名リストが空です。")
         return []
 
-    # ユニークなシート名を生成
+    # ベースタイトルに基づいてユニークなシート名を生成
     base_title = f"{year}-{str(month).zfill(2)}"
     sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
 
@@ -120,7 +120,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         return []
 
     # 必要な列数を確保する
-    total_columns_needed = 2 + len(student_names) * 4  # 2固定列 + 日付列
+    total_columns_needed = 2 + len(attendance_numbers) * 4
     requests.append({
         "appendDimension": {
             "sheetId": new_sheet_id,
@@ -154,96 +154,51 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         }})
 
     # 日付と時限を追加
-    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
     current_date = start_date
     start_column = 2
-    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]
-
     while current_date <= end_date:
         weekday = current_date.weekday()
-        date_string = f"{current_date.strftime('%m/%d')} ({japanese_weekdays[weekday]})"
+        date_string = f"{current_date.strftime('%m/%d')} ({['月', '火', '水', '木', '金', '土', '日'][weekday]})"
         requests.append({"updateCells": {
             "rows": [{"values": [{"userEnteredValue": {"stringValue": date_string}}]}],
             "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": start_column},
             "fields": "userEnteredValue"
         }})
-
-        for period_index, period in enumerate(period_labels):
-            requests.append({"updateCells": {
-                "rows": [{"values": [{"userEnteredValue": {"stringValue": period}}]}],
-                "start": {"sheetId": new_sheet_id, "rowIndex": 1, "columnIndex": start_column + period_index},
-                "fields": "userEnteredValue"
-            }})
-
-        # 土日のセルに色を付ける
-        if weekday == 5:  # 土曜日
-            color = {"red": 0.8, "green": 0.9, "blue": 1.0}
-        elif weekday == 6:  # 日曜日
-            color = {"red": 1.0, "green": 0.8, "blue": 0.8}
-        else:
-            color = None
-
-        if color:
-            requests.append({
-                "repeatCell": {
-                    "range": {
-                        "sheetId": new_sheet_id,
-                        "startRowIndex": 0,
-                        "endRowIndex": len(student_names) + 2,
-                        "startColumnIndex": start_column,
-                        "endColumnIndex": start_column + len(period_labels)
-                    },
-                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
-                    "fields": "userEnteredFormat.backgroundColor"
-                }
-            })
-
-        start_column += len(period_labels)
+        start_column += 1
         current_date += timedelta(days=1)
 
     return requests
-
-
 
 # メイン処理
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    # 各コースに対応する処理を実行
     courses = get_firebase_data("Courses/course_id")
     if not courses or not isinstance(courses, list):
         print("Courses データが見つかりません。")
         return
 
-    for course_id in range(1, len(courses)):  # 1から開始
-        print(f"Processing Course ID: {course_id}")
+    for course_id in range(1, len(courses)):
         sheet_id = get_sheet_id(course_id)
         if not sheet_id:
             continue
 
         student_names, attendance_numbers = get_students_by_course(course_id)
         if not student_names:
-            print(f"Course ID {course_id} の学生リストが空です。")
             continue
 
         for month in range(1, 13):
-            print(f"Processing month: {month} for Course ID: {course_id}")
             requests = prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, sheet_id)
-            if not requests:
-                print(f"月 {month} のシートを更新するリクエストがありません。")
-                continue
-
-            execute_with_retry(
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body={'requests': requests}
+            if requests:
+                execute_with_retry(
+                    sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={'requests': requests}
+                    )
                 )
-            )
-            print(f"月 {month} のシートを正常に更新しました。")
 
 if __name__ == "__main__":
     main()
