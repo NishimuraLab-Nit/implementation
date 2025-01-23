@@ -208,42 +208,82 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         print("新しいシートのIDを取得できませんでした。")
         return []
 
-    requests = []
-    start_date = datetime(year, month, 1)
-    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-    total_days = (end_date - start_date).days + 1
-    num_columns = 2 + total_days
-    num_rows = len(student_names) + 1
+    requests = [
+    {"appendDimension": {"sheetId": new_sheet_id, "dimension": "COLUMNS", "length": 126}},  # 必要な列を確保
+    # 列幅の設定
+    create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 50),  # 出席番号列の幅
+    create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 150),  # 学生名列の幅
+    create_dimension_request(new_sheet_id, "COLUMNS", 2, 126, 80),  # 日付列の幅
+    # 行高さの設定
+    create_dimension_request(new_sheet_id, "ROWS", 0, 1, 40),  # ヘッダー行の高さ
+    create_dimension_request(new_sheet_id, "ROWS", 1, 35, 30),  # 学生データ行の高さ
+    # ヘッダー行の背景色
+    {"repeatCell": {
+        "range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 126},
+        "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}}},
+        "fields": "userEnteredFormat.backgroundColor"
+    }},
+    # テキストの中央揃え
+    {"repeatCell": {
+        "range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0, "endColumnIndex": 126},
+        "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
+        "fields": "userEnteredFormat.horizontalAlignment"
+    }},
+    # セルの境界線を設定
+    {"updateBorders": {
+        "range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0, "endColumnIndex": 126},
+        "top": {"style": "SOLID", "width": 1},
+        "bottom": {"style": "SOLID", "width": 1},
+        "left": {"style": "SOLID", "width": 1},
+        "right": {"style": "SOLID", "width": 1}
+    }},
+    # フィルタを適用
+    {"setBasicFilter": {
+        "filter": {"range": {"sheetId": new_sheet_id, "startRowIndex": 0, "endRowIndex": 35, "startColumnIndex": 0, "endColumnIndex": 126}}
+    }}
+]
 
-    requests.append(ensure_sheet_columns(sheet_id, new_sheet_id, num_columns))
-    requests.extend(set_sheet_background(sheet_id, new_sheet_id, num_rows, num_columns))
+# 学生名と出席番号を記載
+requests.append(create_cell_update_request(new_sheet_id, 0, 1, "学生名"))
+requests.append(create_cell_update_request(new_sheet_id, 0, 0, "AN"))
 
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
-        "fields": "userEnteredValue"
-    }})
-    requests.append({"updateCells": {
-        "rows": [{"values": [{"userEnteredValue": {"stringValue": "AN"}}]}],
-        "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
-        "fields": "userEnteredValue"
-    }})
+for i, (name, attendance_number) in enumerate(zip(student_names, attendance_numbers)):
+    requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))  # 学生名
+    requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, attendance_number))  # 出席番号
 
-    for i, (name, number) in enumerate(zip(student_names, attendance_numbers)):
-        requests.append({"updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 1},
-            "fields": "userEnteredValue"
-        }})
-        requests.append({"updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(number)}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": i + 1, "columnIndex": 0},
-            "fields": "userEnteredValue"
-        }})
+# 日付と授業時限を設定
+japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+start_date = datetime(year, month, 1)
+end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
-    requests.extend(add_dates_to_sheet(sheet_id, month, year, new_sheet_id))
+current_date = start_date
+start_column = 2
+period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]
 
-    return requests
+while current_date <= end_date:
+    weekday = current_date.weekday()
+    date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
+    requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
+
+    for period_index, period in enumerate(period_labels):
+        requests.append(create_cell_update_request(new_sheet_id, 1, start_column + period_index, period))
+
+    # 土曜日と日曜日に背景色を設定
+    if weekday == 5:  # 土曜日
+        color = {"red": 0.8, "green": 0.9, "blue": 1.0}
+        requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
+    elif weekday == 6:  # 日曜日
+        color = {"red": 1.0, "green": 0.8, "blue": 0.8}
+        requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + len(period_labels), color))
+
+    start_column += len(period_labels)
+    current_date += timedelta(days=1)
+
+# 残りのシートの背景色を黒に設定
+requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
+requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
+
+return requests
 
 # メイン処理
 def main():
