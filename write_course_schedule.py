@@ -107,6 +107,7 @@ def create_sheet_requests(sheet_title, sheet_metadata, student_names):
 
     # Add student names to the sheet
     for i, name in enumerate(student_names):
+        print(f"Adding student name '{name}' to row {i + 1}, column 0")
         requests.append({
             "updateCells": {
                 "rows": [{"values": [{"userEnteredValue": {"stringValue": name}}]}],
