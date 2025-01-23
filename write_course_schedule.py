@@ -89,7 +89,7 @@ def get_course_sheet_and_student_data(course_id):
         print(f"コース {course_id} のシートIDが見つかりません。")
         return None, []
 
-    enrollment_data = get_firebase_data(f"Students/enrollment/{course_id}/student_index")
+    enrollment_data = get_firebase_data(f"Students/enrollment/course_id/{course_id}/student_index")
     if not enrollment_data:
         print(f"コース {course_id} に登録された学生データが見つかりません。")
         return sheet_id, []
