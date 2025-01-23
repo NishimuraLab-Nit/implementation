@@ -97,7 +97,7 @@ def get_course_sheet_and_student_data(course_id):
     student_indices = enrollment_data.split(", ")
     student_names = []
     for student_index in student_indices:
-        student_info = get_firebase_data(f"Students/student_info/{student_index}")
+        student_info = get_firebase_data(f"Students/student_info/student_index/{student_index}")
         if student_info and "student_name" in student_info:
             student_names.append(student_info["student_name"])
         else:
