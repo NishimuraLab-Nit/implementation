@@ -47,7 +47,7 @@ def get_student_data(course_id):
     try:
         enrollment_data = get_firebase_data(f'Students/enrollment/course_id/{course_id}/student_index')
         if not enrollment_data:
-            print(f"No enrollment data found for course ID {course_id}.")
+            print(f"No enrollment data found for course ID {course_id}. Skipping.")
             return []
 
         student_indices = [index.strip() for index in enrollment_data.split(',')]
@@ -72,7 +72,7 @@ def get_course_sheet_id(course_id):
             sheet_id = course_data['course_sheet_id']
             print(f"Sheet ID for course ID {course_id}: {sheet_id}")
             return sheet_id
-        print(f"No sheet ID found for course ID {course_id}.")
+        print(f"No sheet ID found for course ID {course_id}. Skipping.")
         return None
     except Exception as e:
         print(f"Error retrieving sheet ID for course ID {course_id}: {e}")
@@ -129,7 +129,7 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
 # 日付とセルフォーマットを追加するリクエストを準備
 def prepare_update_requests(course_id, student_names, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
-        print("No student names provided.")
+        print(f"No student names provided for course ID {course_id}. Skipping.")
         return []
 
     base_title = f"{year}-{str(month).zfill(2)}"
@@ -148,10 +148,10 @@ def prepare_update_requests(course_id, student_names, month, sheets_service, spr
         None
     )
     if not new_sheet_id:
-        print("Failed to create or retrieve new sheet ID.")
+        print(f"Failed to create or retrieve new sheet ID for course ID {course_id}. Skipping.")
         return []
 
-    print(f"New sheet ID: {new_sheet_id}")
+    print(f"New sheet ID for course ID {course_id}: {new_sheet_id}")
 
     # Prepare additional formatting requests
     requests.append(create_cell_update_request(new_sheet_id, 0, 1, "Student Name"))
@@ -175,7 +175,7 @@ def main():
 
     for course_id, course_data in courses.items():
         if not course_id.isdigit():
-            print(f"Invalid course ID: {course_id}. Skipping.")
+            print(f"Invalid course ID format: {course_id}. Skipping.")
             continue
 
         course_id = int(course_id)
@@ -185,14 +185,14 @@ def main():
 
         student_names = get_student_data(course_id)
         if not student_names:
-            print(f"No students found for course ID {course_id}.")
+            print(f"No students found for course ID {course_id}. Skipping.")
             continue
 
         for month in range(1, 13):
             print(f"Processing month {month} for course ID {course_id}.")
             requests = prepare_update_requests(course_id, student_names, month, sheets_service, spreadsheet_id)
             if not requests:
-                print(f"No requests prepared for month {month}.")
+                print(f"No requests prepared for month {month} for course ID {course_id}. Skipping.")
                 continue
 
             try:
@@ -202,9 +202,9 @@ def main():
                         body={'requests': requests}
                     )
                 )
-                print(f"Sheet for month {month} updated successfully.")
+                print(f"Sheet for month {month} updated successfully for course ID {course_id}.")
             except Exception as e:
-                print(f"Error updating sheet for month {month}: {e}")
+                print(f"Error updating sheet for month {month} for course ID {course_id}: {e}")
 
 if __name__ == "__main__":
     main()
