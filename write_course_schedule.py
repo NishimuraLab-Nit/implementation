@@ -42,7 +42,7 @@ def get_student_names(course_id):
     student_names = []
 
     for student_index in student_indices:
-        student_info = get_firebase_data(f'Students/student_info/{student_index}')
+        student_info = get_firebase_data(f'Students/student_info/student_index/{student_index}')
         if student_info:
             student_name = student_info.get('student_name')
             if student_name:
