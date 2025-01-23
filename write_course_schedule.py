@@ -147,28 +147,52 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
+    # Firebaseからクラス情報を取得
     class_indices = get_firebase_data("Class/class_index")
     if not class_indices or not isinstance(class_indices, dict):
         print("クラス情報を取得できませんでした。")
         return
 
+    # 各クラスについて処理
     for class_index, class_data in class_indices.items():
         course_ids = class_data.get("course_id", "")
+        if not course_ids:
+            print(f"クラス {class_index} にコースIDが設定されていません。")
+            continue
+
+        # コースIDをリストに変換
         course_ids = [int(cid.strip()) for cid in course_ids.split(",")]
 
         for course_id in course_ids:
+            # シートIDと学生データを取得
             sheet_id, student_names = get_course_sheet_and_student_data(course_id)
             if not sheet_id or not student_names:
+                print(f"コース {course_id} のデータが不足しています。")
                 continue
 
+            # 各月についてシートを準備
             for month in range(1, 13):
-                requests = prepare_update_requests(sheet_id, student_names, month)
+                sheet_title = f"{class_index}-{course_id}-{month:02d}"  # シートのタイトルを作成
+                requests = prepare_update_requests(
+                    sheets_service,  # Google Sheetsサービス
+                    sheet_id,        # スプレッドシートID
+                    sheet_title,     # シートタイトル
+                    student_names,   # 学生名リスト
+                    month,           # 月
+                )
+
+                if not requests:
+                    print(f"月 {month} のシートを更新するリクエストがありません。")
+                    continue
+
+                # Google Sheetsにリクエストを送信
                 execute_with_retry(
                     sheets_service.spreadsheets().batchUpdate(
                         spreadsheetId=sheet_id,
                         body={"requests": requests}
                     )
                 )
+                print(f"月 {month} のシートを正常に更新しました。")
 
 if __name__ == "__main__":
     main()
