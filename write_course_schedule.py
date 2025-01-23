@@ -77,6 +77,16 @@ def get_students_by_course(course_id):
 
     return student_names, attendance_numbers
 
+# 列数を拡張するリクエスト
+def ensure_sheet_columns(sheet_id, new_sheet_id, required_columns):
+    return {
+        "appendDimension": {
+            "sheetId": new_sheet_id,
+            "dimension": "COLUMNS",
+            "length": required_columns
+        }
+    }
+
 # 日付と曜日をスプレッドシートに記入するリクエストを準備
 def add_dates_to_sheet(sheet_id, month, year, new_sheet_id):
     requests = []
@@ -86,6 +96,13 @@ def add_dates_to_sheet(sheet_id, month, year, new_sheet_id):
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
     
+    # 必要な列数を計算
+    total_days = (end_date - start_date).days + 1
+    required_columns = 2 + total_days  # 2列は学生名と出席番号
+
+    # 列数を拡張
+    requests.append(ensure_sheet_columns(sheet_id, new_sheet_id, required_columns))
+
     # 日付列の開始位置
     column_index = 2
     current_date = start_date
@@ -132,7 +149,7 @@ def add_dates_to_sheet(sheet_id, month, year, new_sheet_id):
     
     return requests
 
-# シート更新リクエストを準備 (修正後)
+# シート更新リクエストを準備
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
         print("学生名リストが空です。")
@@ -190,6 +207,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     requests.extend(date_requests)
 
     return requests
+
 
 # メイン処理 (変更なし)
 def main():
