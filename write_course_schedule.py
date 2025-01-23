@@ -99,7 +99,7 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
 def prepare_update_requests(sheet_id, student_names, month, year=2025):
     if not student_names:
         print("学生名リストが空です。Firebaseから取得したデータを確認してください。")
-        return []
+        student_names = []  # 空リストを許容
 
     requests = []
 
@@ -148,30 +148,35 @@ def main():
         if course_id == 0 or not course_data:
             continue
 
+        # シートIDを取得
         sheet_id = get_sheet_id(course_id)
         if not sheet_id:
             print(f"コース {course_id} に対応するスプレッドシートIDが見つかりませんでした。")
             continue
 
+        # 学生名を取得
         student_names = get_student_names(course_id)
         if not student_names:
-            print(f"コース {course_id} に学生名が見つかりませんでした。ループを終了して次に進みます。")
-            continue
+            print(f"コース {course_id} に学生名が見つかりませんでした。空のシートを更新します。")
 
+        # シート更新処理
         print(f"コース {course_id} のスプレッドシートを更新しています...")
-
         for month in range(1, 13):
             requests = prepare_update_requests(sheet_id, student_names, month)
             if not requests:
+                print(f"月 {month} のリクエストが作成されませんでした。スキップします。")
                 continue
 
-            execute_with_retry(
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body={'requests': requests}
+            try:
+                execute_with_retry(
+                    sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={'requests': requests}
+                    )
                 )
-            )
-            print(f"月 {month} のシートを正常に更新しました。")
+                print(f"月 {month} のシートを正常に更新しました。")
+            except Exception as e:
+                print(f"シート更新中にエラーが発生しました: {e}")
 
 # リトライ付きリクエスト実行
 def execute_with_retry(request, retries=3, delay=5):
