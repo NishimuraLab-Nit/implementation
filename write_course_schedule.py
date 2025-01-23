@@ -1,7 +1,7 @@
+from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from datetime import datetime, timedelta
-from firebase_admin import credentials, initialize_app, db
 
 # Firebase初期化
 def initialize_firebase():
@@ -9,6 +9,14 @@ def initialize_firebase():
     initialize_app(firebase_cred, {
         'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
     })
+
+# Firebaseからデータを取得する関数
+def get_firebase_data(ref_path):
+    try:
+        return db.reference(ref_path).get()
+    except Exception as e:
+        print(f"Firebaseからデータを取得できませんでした: {e}")
+        return None
 
 # Google Sheets APIサービスの初期化
 def get_google_sheets_service():
@@ -62,7 +70,6 @@ def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_co
 
 # シート設定リクエスト準備
 def prepare_sheet_requests(sheet_title, sheets_service, spreadsheet_id, student_indices, year=2025, month=1):
-    # シート作成リクエスト
     add_sheet_request = create_sheet_request(sheet_title)
     response = sheets_service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
@@ -79,37 +86,37 @@ def prepare_sheet_requests(sheet_title, sheets_service, spreadsheet_id, student_
 
     # 列幅・行高の設定
     requests = [
-        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),  # 1列目の幅 (attendance_number)
-        create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 150),  # 2列目の幅 (student_name)
-        create_dimension_request(new_sheet_id, "COLUMNS", 2, 33, 100),  # 3列目以降 (日付列)
-        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),  # 1行目の高さ
-        create_cell_update_request(new_sheet_id, 0, 0, "AN"),  # 1行1列目 (AN)
-        create_cell_update_request(new_sheet_id, 0, 1, "Student Name"),  # 1行2列目 (Student Name)
+        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 100),
+        create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 150),
+        create_dimension_request(new_sheet_id, "COLUMNS", 2, 33, 100),
+        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
+        create_cell_update_request(new_sheet_id, 0, 0, "AN"),
+        create_cell_update_request(new_sheet_id, 0, 1, "Student Name"),
     ]
 
-    # 各学生の attendance_number と名前を設定
+    # 学生データを設定
     for row_index, (student_index, student_data) in enumerate(student_indices.items(), start=1):
         attendance_number = student_data.get(f"{student_index}/attendance_number", "")
         student_name = student_data.get("student_name", "")
-        requests.append(create_cell_update_request(new_sheet_id, row_index, 0, str(attendance_number)))  # AN列
-        requests.append(create_cell_update_request(new_sheet_id, row_index, 1, student_name))  # Student Name列
+        requests.append(create_cell_update_request(new_sheet_id, row_index, 0, str(attendance_number)))
+        requests.append(create_cell_update_request(new_sheet_id, row_index, 1, student_name))
 
-    # 日付列の設定と土日の色付け
+    # 日付列の設定
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
     current_date = start_date
     while current_date <= end_date:
-        col_index = current_date.day + 1  # 3列目から始まる
+        col_index = current_date.day + 1
         weekday = current_date.weekday()
-        date_string = current_date.strftime('%m/%d')  # "MM/DD"形式
+        date_string = current_date.strftime('%m/%d')
         requests.append(create_cell_update_request(new_sheet_id, 0, col_index, date_string))
 
-        # 土日の背景色設定
-        if weekday == 5:  # 土曜日
+        # 土日の背景色
+        if weekday == 5:
             requests.append(create_weekend_color_request(new_sheet_id, 1, 1000, col_index, col_index + 1,
                                                          {"red": 0.8, "green": 0.9, "blue": 1.0}))
-        elif weekday == 6:  # 日曜日
+        elif weekday == 6:
             requests.append(create_weekend_color_request(new_sheet_id, 1, 1000, col_index, col_index + 1,
                                                          {"red": 1.0, "green": 0.8, "blue": 0.8}))
 
