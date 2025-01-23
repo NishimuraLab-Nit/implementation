@@ -127,13 +127,13 @@ def main():
         print(f"Processing course ID: {course_id}")
         sheet_id = get_sheet_id(course_id)
         if not sheet_id:
-            print(f"Skipping course ID {course_id} due to missing sheet ID.")
-            continue
+            print(f"No sheet ID found for course ID {course_id}. Ending loop.")
+            break
 
         student_names = get_student_names(course_id)
         if not student_names:
-            print(f"No student names found for course ID {course_id}.")
-            continue
+            print(f"No student names found for course ID {course_id}. Ending loop.")
+            break
 
         print(f"Preparing requests for course ID {course_id}...")
         requests = create_sheet_requests(sheet_id, student_names)
