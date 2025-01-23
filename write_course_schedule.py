@@ -234,7 +234,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         # 学生名列の幅
         create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 100),
         # 日付列(2～126列)の幅
-        create_dimension_request(new_sheet_id, "COLUMNS", 2, 126, 35),
+        create_dimension_request(new_sheet_id, "COLUMNS", 2, 32, 35),
         # ヘッダー行の高さ
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         # 学生データ行(2～)の高さ (ここでは仮に 35 行分確保)
@@ -248,7 +248,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                     "startRowIndex": 0,
                     "endRowIndex": 35,
                     "startColumnIndex": 0,
-                    "endColumnIndex": 126
+                    "endColumnIndex": 32
                 },
                 "cell": {
                     "userEnteredFormat": {
@@ -266,7 +266,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                     "startRowIndex": 0,
                     "endRowIndex": 35,
                     "startColumnIndex": 0,
-                    "endColumnIndex": 126
+                    "endColumnIndex": 32
                 },
                 "top": {
                     "style": "SOLID",
@@ -295,7 +295,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                         "startRowIndex": 0,
                         "endRowIndex": 35,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 126
+                        "endColumnIndex": 32
                     }
                 }
             }
@@ -319,7 +319,6 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
 
     current_date = start_date
     start_column = 2
-    period_labels = ["1,2限", "3,4限", "5,6限", "7,8限"]
 
     # 各日ごとに日付セルと時限セルを設定
     while current_date <= end_date:
@@ -329,9 +328,6 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         # 日付部分(ヘッダー最上段: row=0)
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
-        # 当日の各時限を2行目に配置 (row=1)
-        for period_index, period in enumerate(period_labels):
-            requests.append(create_cell_update_request(new_sheet_id, 1, start_column + period_index, period))
 
         # 土曜(weekday=5)・日曜(weekday=6)の背景色
         if weekday == 5:  # 土曜日
@@ -351,7 +347,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     # ④ 使わないセルを黒背景に設定
     #    たとえば行は 35 行目以降、列は 126 列目以降を黒にする
     requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
-    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 32, 1000))
 
     return requests
 
