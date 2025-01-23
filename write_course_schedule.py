@@ -77,18 +77,36 @@ def get_students_by_course(course_id):
 
     return student_names, attendance_numbers
 
+# ユニークなシート名を生成
+def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
+    existing_sheets = execute_with_retry(
+        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+    ).get("sheets", [])
+    sheet_titles = [sheet["properties"]["title"] for sheet in existing_sheets]
+    title = base_title
+    counter = 1
+    while title in sheet_titles:
+        title = f"{base_title} ({counter})"
+        counter += 1
+    return title
+
 # シート更新リクエストを準備
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
         print("学生名リストが空です。")
         return []
 
+    # ユニークなシート名を生成
     base_title = f"{year}-{str(month).zfill(2)}"
+    sheet_title = generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title)
+
+    # シートを追加するリクエスト
     add_sheet_request = {
-        "addSheet": {"properties": {"title": base_title}}
+        "addSheet": {"properties": {"title": sheet_title}}
     }
     requests = [add_sheet_request]
 
+    # 新しいシートの作成
     response = execute_with_retry(
         sheets_service.spreadsheets().batchUpdate(
             spreadsheetId=spreadsheet_id,
@@ -119,7 +137,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         }
     })
 
-    # ヘッダーの学生名と出席番号
+    # 学生名と出席番号を記載
     requests.append({
         "updateCells": {
             "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
@@ -150,40 +168,38 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                 "fields": "userEnteredValue"
             }
         })
-
-    # 週末の色付け
-    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
-    start_date = datetime(year, month, 1)
-    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
-    current_date = start_date
-    start_column = 2
-
-    while current_date <= end_date:
-        weekday = current_date.weekday()
-        color = None
-        if weekday == 5:  # 土曜日
-            color = {"red": 0.8, "green": 0.9, "blue": 1.0}
-        elif weekday == 6:  # 日曜日
-            color = {"red": 1.0, "green": 0.8, "blue": 0.8}
-
-        if color:
-            requests.append({
-                "repeatCell": {
-                    "range": {
-                        "sheetId": new_sheet_id,
-                        "startRowIndex": 0,
-                        "endRowIndex": len(student_names) + 1,
-                        "startColumnIndex": start_column,
-                        "endColumnIndex": start_column + 1
-                    },
-                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
-                    "fields": "userEnteredFormat.backgroundColor"
-                }
-            })
-
-        start_column += 1
-        current_date += timedelta(days=1)
+      # 週末の色付け
+      japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+      start_date = datetime(year, month, 1)
+      end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+  
+      current_date = start_date
+      start_column = 2
+  
+      while current_date <= end_date:
+          weekday = current_date.weekday()
+          color = None
+          if weekday == 5:  # 土曜日
+              color = {"red": 0.8, "green": 0.9, "blue": 1.0}
+          elif weekday == 6:  # 日曜日
+              color = {"red": 1.0, "green": 0.8, "blue": 0.8}
+  
+          if color:
+              requests.append({
+                  "repeatCell": {
+                      "range": {
+                          "sheetId": new_sheet_id,
+                          "startRowIndex": 0,
+                          "endRowIndex": len(student_names) + 1,
+                          "startColumnIndex": start_column,
+                          "endColumnIndex": start_column + 1
+                      },
+                      "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                      "fields": "userEnteredFormat.backgroundColor"
+                  }
+              })
+            start_column += 1
+            current_date += timedelta(days=1)
 
     return requests
 
