@@ -40,7 +40,7 @@ def get_sheet_id(course_id):
 
 # Firebaseから学生名を取得
 def get_student_names(course_id):
-    student_indices_data = get_firebase_data(f"Students/enrollment/{course_id}/student_index")
+    student_indices_data = get_firebase_data(f"Students/enrollment/course_id/{course_id}/student_index")
     if not student_indices_data:
         print(f"コース {course_id} に対応する学生インデックスが見つかりませんでした。")
         return []
