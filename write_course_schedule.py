@@ -39,6 +39,21 @@ def execute_with_retry(request, retries=3, delay=5):
             else:
                 raise
 
+def get_existing_sheet_titles(sheets_service, spreadsheet_id):
+    response = execute_with_retry(
+        sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id)
+    )
+    sheets = response.get("sheets", [])
+    return [sheet["properties"]["title"] for sheet in sheets]
+
+def generate_unique_sheet_title(base_title, existing_titles):
+    title = base_title
+    counter = 1
+    while title in existing_titles:
+        title = f"{base_title} ({counter})"
+        counter += 1
+    return title
+
 def get_sheet_id(course_id):
     course_data = get_firebase_data(f'Courses/course_id/{course_id}/course_sheet_id')
     if not course_data:
@@ -66,7 +81,11 @@ def get_student_names(course_id):
 
 def create_sheet_and_update_data(sheets_service, spreadsheet_id, student_names, month):
     year = datetime.now().year
-    sheet_title = f"{year}-{str(month).zfill(2)}"
+    base_title = f"{year}-{str(month).zfill(2)}"
+
+    # Get existing sheet titles and generate a unique title
+    existing_titles = get_existing_sheet_titles(sheets_service, spreadsheet_id)
+    sheet_title = generate_unique_sheet_title(base_title, existing_titles)
 
     # Create a new sheet
     requests = [{
