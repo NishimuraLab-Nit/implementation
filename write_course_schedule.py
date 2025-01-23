@@ -144,10 +144,9 @@ def main():
         return
 
     for course_id, course_data in enumerate(courses):
-      print(f"DEBUG: 処理中のコースID -> {course_id}, データ -> {course_data}")
-      if course_id == 0 or not course_data:
-          continue
-
+        print(f"DEBUG: 処理中のコースID -> {course_id}, データ -> {course_data}")
+        if course_id == 0 or not course_data:
+            continue
 
         sheet_id = get_sheet_id(course_id)
         if not sheet_id:
