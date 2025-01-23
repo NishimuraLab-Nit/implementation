@@ -230,37 +230,16 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
             }
         },
         # 出席番号列の幅
-        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 50),
+        create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 30),
         # 学生名列の幅
-        create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 150),
+        create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 100),
         # 日付列(2～126列)の幅
-        create_dimension_request(new_sheet_id, "COLUMNS", 2, 126, 80),
+        create_dimension_request(new_sheet_id, "COLUMNS", 2, 126, 35),
         # ヘッダー行の高さ
-        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 40),
+        create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         # 学生データ行(2～)の高さ (ここでは仮に 35 行分確保)
         create_dimension_request(new_sheet_id, "ROWS", 1, 35, 30),
-        # ヘッダー行の背景色(薄いグレー)
-        {
-            "repeatCell": {
-                "range": {
-                    "sheetId": new_sheet_id,
-                    "startRowIndex": 0,
-                    "endRowIndex": 1,
-                    "startColumnIndex": 0,
-                    "endColumnIndex": 126
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "backgroundColor": {
-                            "red": 0.9,
-                            "green": 0.9,
-                            "blue": 0.9
-                        }
-                    }
-                },
-                "fields": "userEnteredFormat.backgroundColor"
-            }
-        },
+       
         # テキストの横位置を中央揃え
         {
             "repeatCell": {
@@ -330,8 +309,8 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     # 学生名・出席番号を各行に記入
     for i, (name, attendance_number) in enumerate(zip(student_names, attendance_numbers)):
         # 出席番号(AN)を0列に、学生名を1列に
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, attendance_number))
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))
+        requests.append(create_cell_update_request(new_sheet_id, i + 1, 0, attendance_number))
+        requests.append(create_cell_update_request(new_sheet_id, i + 1, 1, name))
 
     # ③ 日付と授業時限ラベルを設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
