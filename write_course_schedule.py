@@ -128,7 +128,9 @@ def prepare_sheet_requests(sheet_title, sheets_service, spreadsheet_id, student_
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
-    spreadsheet_id = "your-spreadsheet-id"  # 使用するスプレッドシートID
+    
+    # 実際のスプレッドシートIDを入力
+    spreadsheet_id = "1A2B3C4D5E6F7G8H9I0J"  # 実際のIDに置き換え
 
     # Firebaseから学生データを取得
     student_indices = get_firebase_data("Students/student_info/student_index")
