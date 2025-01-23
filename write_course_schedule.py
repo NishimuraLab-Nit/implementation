@@ -22,7 +22,7 @@ def get_firebase_data(ref_path):
 
 # 学生のコースIDを取得
 def get_student_course_ids(student_index):
-    student_data = get_firebase_data(f"Students/student_info/student_index/{student_index}")
+    student_data = get_firebase_data(f"Students/enrollment/student_index/{student_index}")
     print(f"学生インデックス {student_index} のデータ: {student_data}")  # デバッグ用
     if not student_data:
         print(f"学生インデックス {student_index} のデータが見つかりません。")
