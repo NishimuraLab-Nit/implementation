@@ -19,19 +19,20 @@ def initialize_firebase():
 def get_google_sheets_service():
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
-
     authorized_http = AuthorizedHttp(google_creds, http=httplib2.Http(timeout=60))
     return build('sheets', 'v4', cache_discovery=False, http=authorized_http)
 
 # Firebaseからデータを取得
 def get_firebase_data(ref_path):
     try:
-        return db.reference(ref_path).get()
+        data = db.reference(ref_path).get()
+        print(f"DEBUG: {ref_path} -> {data}")
+        return data
     except Exception as e:
         print(f"Firebaseデータ取得エラー: {e}")
         return None
 
-# リストからコースIDに対応するsheet_idを取得
+# コースIDに対応するsheet_idを取得
 def get_sheet_id(course_id):
     course_data = get_firebase_data(f"Courses/course_id/{course_id}")
     if course_data:
@@ -40,7 +41,7 @@ def get_sheet_id(course_id):
 
 # Firebaseから学生名を取得
 def get_student_names(course_id):
-    student_indices_data = get_firebase_data(f"Students/enrollment/course_id/{course_id}/student_index")
+    student_indices_data = get_firebase_data(f"Students/enrollment/{course_id}/student_index")
     if not student_indices_data:
         print(f"コース {course_id} に対応する学生インデックスが見つかりませんでした。")
         return []
@@ -55,7 +56,6 @@ def get_student_names(course_id):
 
     print(f"DEBUG: 学生名一覧 -> {student_names}")
     return student_names
-
 
 # セル更新リクエストを作成
 def create_cell_update_request(sheet_id, row_index, column_index, value):
