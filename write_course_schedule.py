@@ -144,8 +144,13 @@ def main():
     if not sheets_service:
         return
 
-    # 実際のスプレッドシートIDを入力
-    spreadsheet_id = "1A2B3C4D5E6F7G8H9I0J"  # 実際のIDに置き換え
+    # FirebaseからスプレッドシートIDを取得
+    course_id = "example_course_id"  # 実際のコースIDを指定
+    sheet_id_path = f"Courses/{course_id}/course_sheet_id"
+    spreadsheet_id = get_firebase_data(sheet_id_path)
+    if not spreadsheet_id:
+        print(f"スプレッドシートIDが {sheet_id_path} から取得できませんでした。")
+        return
 
     # Firebaseから学生データを取得
     student_indices = get_firebase_data("Students/student_info/student_index")
