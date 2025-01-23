@@ -1,137 +1,186 @@
-import time
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+from google_auth_httplib2 import AuthorizedHttp
+import httplib2
+import time
+import socket
 from datetime import datetime, timedelta
 
+# Firebaseの初期化
 def initialize_firebase():
     firebase_cred = credentials.Certificate("firebase-adminsdk.json")
     initialize_app(firebase_cred, {
         'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
     })
 
+# Google Sheets APIサービスの初期化
 def get_google_sheets_service():
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
-    return build('sheets', 'v4', credentials=google_creds)
 
+    authorized_http = AuthorizedHttp(google_creds, http=httplib2.Http(timeout=60))
+    return build('sheets', 'v4', cache_discovery=False, http=authorized_http)
+
+# Firebaseからデータを取得
 def get_firebase_data(ref_path):
-    return db.reference(ref_path).get()
+    try:
+        return db.reference(ref_path).get()
+    except Exception as e:
+        print(f"Firebaseデータ取得エラー: {e}")
+        return None
 
-def create_sheet_request(sheet_title):
+# リストからコースIDに対応するsheet_idを取得
+def get_sheet_id(course_id):
+    course_data = get_firebase_data(f"Courses/course_id/{course_id}")
+    if course_data:
+        return course_data.get("course_sheet_id", "")
+    return ""
+
+# Firebaseから学生名を取得
+def get_student_names(course_id):
+    student_indices_data = get_firebase_data(f"Students/enrollment/{course_id}/student_index")
+    if not student_indices_data:
+        print(f"コース {course_id} に対応する学生インデックスが見つかりませんでした。")
+        return []
+
+    student_indices = student_indices_data.split(",")
+    student_names = []
+
+    for student_index in student_indices:
+        student_info = get_firebase_data(f"Students/student_info/{student_index}")
+        if student_info and student_info.get("student_name"):
+            student_names.append(student_info["student_name"])
+
+    return student_names
+
+# セル更新リクエストを作成
+def create_cell_update_request(sheet_id, row_index, column_index, value):
     return {
-        "addSheet": {
-            "properties": {
-                "title": sheet_title,
-                "gridProperties": {
-                    "rowCount": 1000,
-                    "columnCount": 32
-                }
-            }
+        "updateCells": {
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(value)}}]}],
+            "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
+            "fields": "userEnteredValue"
         }
     }
 
-def execute_request_with_retry(sheets_service, spreadsheet_id, requests, retries=3, delay=5):
-    for attempt in range(retries):
-        try:
-            sheets_service.spreadsheets().batchUpdate(
-                spreadsheetId=spreadsheet_id,
-                body={'requests': requests}
-            ).execute()
-            return
-        except HttpError as e:
-            if e.resp.status == 429 and attempt < retries - 1:
-                print(f"Rate limit exceeded. Retrying in {delay} seconds...")
-                time.sleep(delay)
-                delay *= 2  # Exponential backoff
-            else:
-                raise
+# 土日セルの色付けリクエストを作成
+def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_col, color):
+    return {
+        "repeatCell": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_col,
+                "endColumnIndex": end_col
+            },
+            "cell": {"userEnteredFormat": {"backgroundColor": color}},
+            "fields": "userEnteredFormat.backgroundColor"
+        }
+    }
 
-def prepare_update_requests(course_sheet_id, student_name, month, sheets_service, spreadsheet_id, year=2025):
+# 黒背景リクエストを作成
+def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
+    black_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
+    return {
+        "repeatCell": {
+            "range": {"sheetId": sheet_id, "startRowIndex": start_row, "endRowIndex": end_row,
+                      "startColumnIndex": start_col, "endColumnIndex": end_col},
+            "cell": {"userEnteredFormat": {"backgroundColor": black_color}},
+            "fields": "userEnteredFormat.backgroundColor"
+        }
+    }
+
+# シート更新リクエストを準備
+def prepare_update_requests(sheet_id, student_names, month, year=2025):
+    if not student_names:
+        print("学生名リストが空です。Firebaseから取得したデータを確認してください。")
+        return []
+
     requests = []
-    if not student_name:
-        print("学生名が空です。")
-        return requests
 
-    base_title = f"{year}-{str(month).zfill(2)}"
-    add_sheet_request = create_sheet_request(base_title)
-    requests.append(add_sheet_request)
+    # 学生名とヘッダーを記載
+    requests.append(create_cell_update_request(sheet_id, 0, 1, "学生名"))
+    for i, name in enumerate(student_names):
+        requests.append(create_cell_update_request(sheet_id, i + 1, 1, name))
 
-    response = sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={'requests': [add_sheet_request]}
-    ).execute()
+    # 日付と授業時限を設定
+    japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    start_date = datetime(year, month, 1)
+    end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
 
-    new_sheet_id = None
-    for reply in response.get('replies', []):
-        if 'addSheet' in reply:
-            new_sheet_id = reply['addSheet']['properties']['sheetId']
-    if new_sheet_id is None:
-        print("新しいシートIDを取得できませんでした。")
-        return requests
+    current_date = start_date
+    start_column = 2
 
-    # 学生名を設定
-    requests.append({
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 0},
-            "fields": "userEnteredValue"
-        }
-    })
-    requests.append({
-        "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": student_name}}]}],
-            "start": {"sheetId": new_sheet_id, "rowIndex": 1, "columnIndex": 0},
-            "fields": "userEnteredValue"
-        }
-    })
+    while current_date <= end_date:
+        weekday = current_date.weekday()
+        date_string = f"{current_date.strftime('%m/%d')} ({japanese_weekdays[weekday]})"
+        requests.append(create_cell_update_request(sheet_id, 0, start_column, date_string))
+
+        if weekday >= 5:  # 土日カラー設定
+            color = {"red": 1.0, "green": 0.8, "blue": 0.8} if weekday == 6 else {"red": 0.8, "green": 0.9, "blue": 1.0}
+            requests.append(create_weekend_color_request(sheet_id, 0, len(student_names) + 1, start_column, start_column + 1, color))
+
+        start_column += 1
+        current_date += timedelta(days=1)
+
+    # 残りの背景を黒に設定
+    requests.append(create_black_background_request(sheet_id, len(student_names) + 1, 1000, 0, 1000))
 
     return requests
 
+# メイン処理
 def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    student_indices = get_firebase_data('Students/student_info/student_index')
-    if not student_indices or not isinstance(student_indices, dict):
-        print("Firebaseから学生インデックスを取得できませんでした。")
+    courses = get_firebase_data("Courses/course_id")
+    if not courses or not isinstance(courses, list):
+        print("Coursesデータが見つかりませんでした。")
         return
 
-    for student_index, student_data in student_indices.items():
-        student_name = student_data.get('student_name')
-        if not student_name:
-            print(f"学生インデックス {student_index} に学生名が見つかりませんでした。")
+    for course_id, course_data in enumerate(courses):
+        if course_id == 0 or not course_data:
             continue
 
-        student_course_ids = get_firebase_data(f'Students/enrollment/student_index/{student_index}/course_id')
-        if isinstance(student_course_ids, str):
-            student_course_ids = student_course_ids.split(', ')
-        if not student_course_ids:
-            print(f"学生インデックス {student_index} に関連付けられたコースIDが見つかりませんでした。")
+        sheet_id = get_sheet_id(course_id)
+        if not sheet_id:
+            print(f"コース {course_id} に対応するスプレッドシートIDが見つかりませんでした。")
             continue
 
-        for course_id in student_course_ids:
-            course_id = course_id.strip()
-            if not course_id:
-                print(f"無効なコースIDが見つかりました: {course_id}")
+        student_names = get_student_names(course_id)
+        if not student_names:
+            print(f"コース {course_id} に学生名が見つかりませんでした。")
+            continue
+
+        print(f"コース {course_id} のスプレッドシートを更新しています...")
+
+        for month in range(1, 13):
+            requests = prepare_update_requests(sheet_id, student_names, month)
+            if not requests:
                 continue
 
-            course_sheet_id = get_firebase_data(f'Courses/course_id/{course_id}/course_sheet_id')
-            if not course_sheet_id:
-                print(f"コースID {course_id} に関連付けられたシートIDが見つかりませんでした。")
-                continue
+            execute_with_retry(
+                sheets_service.spreadsheets().batchUpdate(
+                    spreadsheetId=sheet_id,
+                    body={'requests': requests}
+                )
+            )
+            print(f"月 {month} のシートを正常に更新しました。")
 
-            for month in range(1, 13):
-                print(f"Processing month: {month} for student index: {student_index} and course_id: {course_id}")
-                requests = prepare_update_requests(course_sheet_id, student_name, month, sheets_service, course_sheet_id)
-                if not requests:
-                    print(f"月 {month} のシートを更新するリクエストがありません。")
-                    continue
-
-                # リクエストを実行（再試行付き）
-                execute_request_with_retry(sheets_service, course_sheet_id, requests)
-                print(f"月 {month} のシートを正常に更新しました。")
+# リトライ付きリクエスト実行
+def execute_with_retry(request, retries=3, delay=5):
+    for attempt in range(retries):
+        try:
+            return request.execute()
+        except (HttpError, socket.timeout) as e:
+            print(f"リクエスト失敗 ({attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
 
 if __name__ == "__main__":
     main()
