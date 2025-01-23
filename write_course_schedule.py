@@ -125,11 +125,13 @@ def main():
         print("コースデータが見つかりませんでした。")
         return
 
-    for course_id in range(1, len(courses)):
+     for course_id in range(1, len(courses)):
         spreadsheet_id = extract_sheet_id(course_id)
         if not spreadsheet_id:
-            print(f"コースID {course_id} のスプレッドシートIDが見つかりません。")
+            print(f\"コースID {course_id} のスプレッドシートIDが見つかりません。\")
             continue
+  
+
 
         student_names = extract_student_names(course_id)
         if not student_names:
