@@ -48,7 +48,19 @@ def get_sheet_id(course_id):
     sheet_data = get_firebase_data(f"Courses/course_id/{course_id}/course_sheet_id")
     if not sheet_data:
         return None
-    return int(sheet_data)  # Convert to integer for sheetId compatibility
+
+    # Fetch the internal sheet ID using the Google Sheets API
+    sheets_service = get_google_sheets_service()
+    spreadsheet_id = sheet_data  # Assuming this is the spreadsheet ID
+    try:
+        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = spreadsheet.get("sheets", [])
+        if sheets:
+            # Return the first sheet's ID as a default behavior
+            return sheets[0]["properties"]["sheetId"]
+    except Exception as e:
+        print(f"Error fetching sheet ID: {e}")
+    return None
 
 def prepare_update_requests(sheet_id, student_names, month, year=2025):
     requests = []
