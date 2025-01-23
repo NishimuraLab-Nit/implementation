@@ -68,33 +68,22 @@ def get_sheet_id(course_id):
         print(f"No sheet ID found for course_id: {course_id}")
         return None
 
-    # Fetch the internal sheet ID using the Google Sheets API
-    sheets_service = get_google_sheets_service()
-    spreadsheet_id = sheet_data  # Assuming this is the spreadsheet ID
-    try:
-        spreadsheet = sheets_service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
-        sheets = spreadsheet.get("sheets", [])
-        if sheets:
-            sheet_id = sheets[0]["properties"]["sheetId"]
-            print(f"Internal sheet ID: {sheet_id}")
-            return sheet_id
-    except Exception as e:
-        print(f"Error fetching sheet ID: {e}")
-    return None
+    # Returning the sheet_data directly as spreadsheet ID
+    return sheet_data
 
 def prepare_update_requests(sheet_id, student_names, month, year=2025):
     print(f"Preparing update requests for sheet_id: {sheet_id}, month: {month}, year: {year}")
     requests = []
     requests.append({
         "updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
+            "range": {"sheetId": 0, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1},
             "properties": {"pixelSize": 35},
             "fields": "pixelSize"
         }
     })
     requests.append({
         "updateDimensionProperties": {
-            "range": {"sheetId": sheet_id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
+            "range": {"sheetId": 0, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2},
             "properties": {"pixelSize": 100},
             "fields": "pixelSize"
         }
@@ -104,7 +93,7 @@ def prepare_update_requests(sheet_id, student_names, month, year=2025):
             {"userEnteredValue": {"stringValue": "出席番号"}},
             {"userEnteredValue": {"stringValue": "学生名"}}
         ]}],
-        "start": {"sheetId": sheet_id, "rowIndex": 0, "columnIndex": 0},
+        "start": {"sheetId": 0, "rowIndex": 0, "columnIndex": 0},
         "fields": "userEnteredValue"
     }})
     for i, name in enumerate(student_names):
@@ -113,7 +102,7 @@ def prepare_update_requests(sheet_id, student_names, month, year=2025):
                 {"userEnteredValue": {"numberValue": i + 1}},
                 {"userEnteredValue": {"stringValue": name}}
             ]}],
-            "start": {"sheetId": sheet_id, "rowIndex": i + 1, "columnIndex": 0},
+            "start": {"sheetId": 0, "rowIndex": i + 1, "columnIndex": 0},
             "fields": "userEnteredValue"
         }})
     current_date = datetime(year, month, 1)
@@ -123,7 +112,7 @@ def prepare_update_requests(sheet_id, student_names, month, year=2025):
             "rows": [{"values": [
                 {"userEnteredValue": {"stringValue": current_date.strftime("%m/%d")}}
             ]}],
-            "start": {"sheetId": sheet_id, "rowIndex": 0, "columnIndex": col_index},
+            "start": {"sheetId": 0, "rowIndex": 0, "columnIndex": col_index},
             "fields": "userEnteredValue"
         }})
         current_date += timedelta(days=1)
@@ -136,7 +125,7 @@ def prepare_update_requests(sheet_id, student_names, month, year=2025):
             requests.append({
                 "repeatCell": {
                     "range": {
-                        "sheetId": sheet_id,
+                        "sheetId": 0,
                         "startRowIndex": 0,
                         "endRowIndex": len(student_names) + 1,
                         "startColumnIndex": col_index,
@@ -164,7 +153,7 @@ def main():
         print(f"Processing course_id: {course_id}")
         sheet_id = get_sheet_id(course_id)
         if not sheet_id:
-            print(f"Skipping course_id {course_id}: No sheet ID found.")
+            print(f"Skipping course_id {course_id}: No sheet ID found. Writing operation is starting.")
             continue
         student_indices = get_student_indices(course_id)
         student_names = get_student_names(student_indices)
