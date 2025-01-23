@@ -40,7 +40,7 @@ def execute_with_retry(request, retries=3, delay=5):
                 raise
 
 def get_sheet_id(course_id):
-    course_data = get_firebase_data(f'Courses/{course_id}/course_sheet_id')
+    course_data = get_firebase_data(f'Courses/course_id/{course_id}/course_sheet_id')
     if not course_data:
         print(f"Course sheet ID not found for course_id: {course_id}")
         return None
@@ -56,7 +56,7 @@ def get_student_names(course_id):
     student_names = []
 
     for student_index in student_indices:
-        student_info = get_firebase_data(f'Students/student_info/{student_index}/student_name')
+        student_info = get_firebase_data(f'Students/student_info/student_index/{student_index}/student_name')
         if student_info:
             student_names.append(student_info)
         else:
@@ -131,23 +131,27 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    course_ids = get_firebase_data('Courses/course_id')
-    if not course_ids:
-        print("No courses found in Firebase.")
+    class_indices = get_firebase_data('Class/class_index')
+    if not class_indices:
+        print("No classes found in Firebase.")
         return
 
-    for course_id in range(1, len(course_ids)):
-        sheet_id = get_sheet_id(course_id)
-        if not sheet_id:
-            continue
+    for class_key, class_data in class_indices.items():
+        course_ids = [int(cid.strip()) for cid in class_data.get("course_id", "").split(",")]
+        spreadsheet_id = class_data.get("class_sheet_id")
 
-        student_names = get_student_names(course_id)
-        if not student_names:
-            continue
+        for course_id in course_ids:
+            sheet_id = get_sheet_id(course_id)
+            if not sheet_id:
+                continue
 
-        for month in range(1, 13):
-            print(f"Processing sheet for month: {month}")
-            create_sheet_and_update_data(sheets_service, sheet_id, student_names, month)
+            student_names = get_student_names(course_id)
+            if not student_names:
+                continue
+
+            for month in range(1, 13):
+                print(f"Processing sheet for month: {month}")
+                create_sheet_and_update_data(sheets_service, spreadsheet_id, student_names, month)
 
 if __name__ == "__main__":
     main()
