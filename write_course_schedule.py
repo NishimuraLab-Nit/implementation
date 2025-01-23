@@ -106,8 +106,12 @@ def prepare_update_requests(sheet_id, student_names, month, year=2025):
             "fields": "userEnteredValue"
         }})
     current_date = datetime(year, month, 1)
+    max_columns = 25  # Default maximum columns for Google Sheets
     while current_date.month == month:
         col_index = current_date.day + 1
+        if col_index > max_columns:
+            print(f"Skipping column index {col_index} as it exceeds the maximum column limit {max_columns}.")
+            break
         requests.append({"updateCells": {
             "rows": [{"values": [
                 {"userEnteredValue": {"stringValue": current_date.strftime("%m/%d")}}
@@ -120,8 +124,11 @@ def prepare_update_requests(sheet_id, student_names, month, year=2025):
     # Set weekend color
     current_date = datetime(year, month, 1)
     while current_date.month == month:
+        col_index = current_date.day + 1
+        if col_index > max_columns:
+            print(f"Skipping weekend coloring for column index {col_index} as it exceeds the maximum column limit {max_columns}.")
+            break
         if current_date.weekday() in [5, 6]:  # Saturday or Sunday
-            col_index = current_date.day + 1
             requests.append({
                 "repeatCell": {
                     "range": {
