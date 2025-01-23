@@ -119,8 +119,17 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         print("新しいシートのIDを取得できませんでした。")
         return []
 
+    # 必要な列数を確保する
+    total_columns_needed = 2 + len(student_names) * 4  # 2固定列 + 日付列
+    requests.append({
+        "appendDimension": {
+            "sheetId": new_sheet_id,
+            "dimension": "COLUMNS",
+            "length": total_columns_needed
+        }
+    })
+
     # 学生データと日付をスプレッドシートに記入
-    requests = []
     requests.append({"updateCells": {
         "rows": [{"values": [{"userEnteredValue": {"stringValue": "学生名"}}]}],
         "start": {"sheetId": new_sheet_id, "rowIndex": 0, "columnIndex": 1},
@@ -195,16 +204,8 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         start_column += len(period_labels)
         current_date += timedelta(days=1)
 
-    # シート全体の背景色を黒で設定
-    requests.append({
-        "repeatCell": {
-            "range": {"sheetId": new_sheet_id, "startRowIndex": len(student_names) + 2, "endRowIndex": 1000, "startColumnIndex": 0, "endColumnIndex": 1000},
-            "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0, "green": 0, "blue": 0}}},
-            "fields": "userEnteredFormat.backgroundColor"
-        }
-    })
-
     return requests
+
 
 
 # メイン処理
