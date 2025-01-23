@@ -44,6 +44,18 @@ def get_all_course_ids():
     print(f"Course IDs fetched: {course_ids}")
     return course_ids
 
+def get_sheet_metadata(service, spreadsheet_id):
+    print(f"Fetching sheet metadata for spreadsheet ID: {spreadsheet_id}")
+    try:
+        spreadsheet = service.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+        sheets = spreadsheet.get("sheets", [])
+        sheet_metadata = {sheet["properties"]["title"]: sheet["properties"]["sheetId"] for sheet in sheets}
+        print(f"Sheet metadata fetched: {sheet_metadata}")
+        return sheet_metadata
+    except HttpError as e:
+        print(f"Error fetching sheet metadata: {e}")
+        return {}
+
 def get_sheet_id(course_id):
     print(f"Fetching sheet ID for course ID: {course_id}")
     course_data = get_firebase_data(f"Courses/course_id/{course_id}")
@@ -75,8 +87,13 @@ def get_student_names(course_id):
     print(f"Student names fetched: {student_names}")
     return student_names
 
-def create_sheet_requests(sheet_id, student_names):
-    print(f"Creating sheet setup requests for sheet ID: {sheet_id}")
+def create_sheet_requests(sheet_title, sheet_metadata, student_names):
+    print(f"Creating sheet setup requests for sheet title: {sheet_title}")
+    sheet_id = sheet_metadata.get(sheet_title)
+    if sheet_id is None:
+        print(f"Sheet title '{sheet_title}' not found in metadata.")
+        return []
+
     requests = []
 
     # Set column widths
@@ -125,9 +142,14 @@ def main():
 
     for course_id in course_ids:
         print(f"Processing course ID: {course_id}")
-        sheet_id = get_sheet_id(course_id)
-        if not sheet_id:
-            print(f"No sheet ID found for course ID {course_id}. Ending loop.")
+        spreadsheet_id = get_sheet_id(course_id)
+        if not spreadsheet_id:
+            print(f"No spreadsheet ID found for course ID {course_id}. Ending loop.")
+            break
+
+        sheet_metadata = get_sheet_metadata(sheets_service, spreadsheet_id)
+        if not sheet_metadata:
+            print(f"No sheet metadata found for spreadsheet ID {spreadsheet_id}. Ending loop.")
             break
 
         student_names = get_student_names(course_id)
@@ -135,9 +157,11 @@ def main():
             print(f"No student names found for course ID {course_id}. Ending loop.")
             break
 
+        sheet_title = "Sheet1"  # Replace with actual sheet title if needed
         print(f"Preparing requests for course ID {course_id}...")
-        requests = create_sheet_requests(sheet_id, student_names)
-        execute_requests(sheets_service, sheet_id, requests)
+        requests = create_sheet_requests(sheet_title, sheet_metadata, student_names)
+        if requests:
+            execute_requests(sheets_service, spreadsheet_id, requests)
         print(f"Finished processing course ID: {course_id}\n")
 
 if __name__ == "__main__":
