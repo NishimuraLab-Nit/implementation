@@ -30,21 +30,33 @@ def get_firebase_data(ref_path):
         print(f"Firebaseデータ取得エラー: {e}")
         return None
 
-# Firebaseからsheet_idを取得
-def get_sheet_id(course_id):
-    sheet_id_path = f"Courses/{course_id}/course_sheet_id"
-    return get_firebase_data(sheet_id_path)
+# Firebaseからcourse_idリストを取得
+def get_course_ids():
+    courses = get_firebase_data("Courses/course_id")
+    if not courses:
+        print("コースデータが見つかりませんでした。")
+        return []
 
-# Firebaseから学生名を取得
-def get_student_names(course_id):
-    student_indices_path = f"Students/enrollment/course_id/{course_id}/student_index"
+    course_ids = []
+    for i, course in enumerate(courses):
+        if course and "course_name" in course:
+            course_ids.append(i)  # インデックスがcourse_idに対応
+
+    return course_ids
+
+# Firebaseからstudent_indexリストを取得
+def get_student_indices(class_index):
+    student_indices_path = f"Class/class_index/{class_index}/student_index"
     student_indices_data = get_firebase_data(student_indices_path)
 
     if not student_indices_data:
-        print(f"コース {course_id} の学生インデックスを取得できませんでした。")
+        print(f"クラス {class_index} の学生インデックスが見つかりませんでした。")
         return []
 
-    student_indices = student_indices_data.split(',')  # カンマ区切りを処理
+    return student_indices_data.split(", ")  # カンマとスペースで分割
+
+# Firebaseから学生名を取得
+def get_student_names(student_indices):
     student_names = []
 
     for student_index in student_indices:
@@ -159,31 +171,35 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    # コースの取得
-    course_ids = get_firebase_data('Courses')
-    if not course_ids:
-        print("コースが見つかりませんでした。")
+    # クラス情報を取得
+    class_data = get_firebase_data("Class/class_index")
+    if not class_data:
+        print("クラス情報が見つかりませんでした。")
         return
 
-    for course_id in course_ids:
-        sheet_id = get_sheet_id(course_id)
-        if not sheet_id:
-            print(f"コース {course_id} のシートIDが見つかりませんでした。")
+    for class_index, class_info in class_data.items():
+        student_indices = get_student_indices(class_index)
+        if not student_indices:
             continue
 
-        student_names = get_student_names(course_id)
+        student_names = get_student_names(student_indices)
         if not student_names:
-            print(f"コース {course_id} の学生名が見つかりませんでした。")
             continue
 
-        for month in range(1, 13):
-            print(f"Processing month {month} for course {course_id}")
-            requests = prepare_update_requests(sheet_id, student_names, month)
-            if requests:
-                sheets_service.spreadsheets().batchUpdate(
-                    spreadsheetId=sheet_id,
-                    body={"requests": requests}
-                ).execute()
+        course_ids = get_course_ids()
+        for course_id in course_ids:
+            sheet_id = get_sheet_id(course_id)
+            if not sheet_id:
+                continue
+
+            for month in range(1, 13):
+                print(f"Processing month {month} for class {class_index}, course {course_id}")
+                requests = prepare_update_requests(sheet_id, student_names, month)
+                if requests:
+                    sheets_service.spreadsheets().batchUpdate(
+                        spreadsheetId=sheet_id,
+                        body={"requests": requests}
+                    ).execute()
 
 if __name__ == "__main__":
     main()
