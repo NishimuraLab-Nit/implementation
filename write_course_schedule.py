@@ -1,7 +1,7 @@
 from firebase_admin import credentials, initialize_app, db
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError  # 修正: HttpError をインポート
+from googleapiclient.errors import HttpError
 from google.auth.transport.requests import Request
 from google_auth_httplib2 import AuthorizedHttp
 import httplib2
@@ -20,11 +20,7 @@ def initialize_firebase():
 def get_google_sheets_service():
     scopes = ['https://www.googleapis.com/auth/spreadsheets']
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
-
-    # 認証済みの HTTP クライアントを作成
     authorized_http = AuthorizedHttp(google_creds, http=httplib2.Http(timeout=60))
-    
-    # サービスを初期化
     return build('sheets', 'v4', cache_discovery=False, http=authorized_http)
 
 # Firebaseからデータを取得
@@ -35,12 +31,39 @@ def get_firebase_data(ref_path):
         print(f"Firebaseデータ取得エラー: {e}")
         return None
 
+# コースごとの学生データを取得
+def get_student_data(course_id):
+    # Enrollmentからstudent_indexを取得
+    enrollment_data = get_firebase_data(f'Students/enrollment/course_id/{course_id}/student_index')
+    if not enrollment_data:
+        print(f"コース {course_id} の学生インデックスを取得できませんでした。")
+        return []
+
+    student_indices = [index.strip() for index in enrollment_data.split(',')]
+    
+    # student_nameを取得
+    student_names = []
+    for student_index in student_indices:
+        student_info = get_firebase_data(f'Students/student_info/{student_index}')
+        if student_info and 'student_name' in student_info:
+            student_names.append(student_info['student_name'])
+
+    return student_names
+
+# コースのシートIDを取得
+def get_course_sheet_id(course_id):
+    course_data = get_firebase_data(f'Courses/{course_id}')
+    if course_data and 'course_sheet_id' in course_data:
+        return course_data['course_sheet_id']
+    print(f"コース {course_id} のシートIDが見つかりませんでした。")
+    return None
+
 # リトライ付きリクエスト実行
 def execute_with_retry(request, retries=3, delay=5):
     for attempt in range(retries):
         try:
             return request.execute()
-        except (HttpError, socket.timeout) as e:  # 修正: HttpError をキャッチ
+        except (HttpError, socket.timeout) as e:
             print(f"リクエスト失敗 ({attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
@@ -51,7 +74,7 @@ def execute_with_retry(request, retries=3, delay=5):
 def create_cell_update_request(sheet_id, row_index, column_index, value):
     return {
         "updateCells": {
-            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(value)}}]}],  # 修正: 数値を文字列に変換
+            "rows": [{"values": [{"userEnteredValue": {"stringValue": str(value)}}]}],
             "start": {"sheetId": sheet_id, "rowIndex": row_index, "columnIndex": column_index},
             "fields": "userEnteredValue"
         }
@@ -107,7 +130,7 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
             "fields": "userEnteredFormat.backgroundColor"
         }
     }
-    
+
 # ユニークなシート名を生成
 def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
     existing_sheets = execute_with_retry(
@@ -121,28 +144,8 @@ def generate_unique_sheet_title(sheets_service, spreadsheet_id, base_title):
         counter += 1
     return title
 
-# Firebaseからstudent_namesとattendance_numbersを取得
-def get_student_data(class_index):
-    student_indices = get_firebase_data('Students/student_info/student_index')
-    if not student_indices or not isinstance(student_indices, dict):
-        print("学生インデックスを取得できませんでした。")
-        return [], []
-
-    student_names = []
-    attendance_numbers = []
-
-    for index, student_data in student_indices.items():
-        if str(index).startswith(class_index):
-            student_name = student_data.get("student_name")
-            attendance_number = student_data.get("attendance_number")
-            if student_name:
-                student_names.append(student_name)
-                attendance_numbers.append(attendance_number or "")  # 値が無い場合は空文字列
-
-    return student_names, attendance_numbers
-
 # シート更新リクエストを準備
-def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
+def prepare_update_requests(course_id, student_names, month, sheets_service, spreadsheet_id, year=2025):
     if not student_names:
         print("学生名リストが空です。Firebaseから取得したデータを確認してください。")
         return []
@@ -191,13 +194,12 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                                                      "startColumnIndex": 0, "endColumnIndex": 126}}}}
     ]
 
-    # 学生名と出席番号を記載
+    # 学生名を記載
     requests.append(create_cell_update_request(new_sheet_id, 0, 1, "学生名"))
     requests.append(create_cell_update_request(new_sheet_id, 0, 0, "AN"))
 
-    for i, (name, attendance_number) in enumerate(zip(student_names, attendance_numbers)):
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))  # 学生名
-        requests.append(create_cell_update_request(new_sheet_id, i + 2, 0, attendance_number))  # 出席番号
+    for i, name in enumerate(student_names):
+        requests.append(create_cell_update_request(new_sheet_id, i + 2, 1, name))
 
     # 日付と授業時限を設定
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
@@ -229,7 +231,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     # 残りのシートの背景色を黒に設定
     requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
     requests.append(create_black_background_request(new_sheet_id, 0, 1000, 126, 1000))
-    
+
     return requests
 
 # メイン処理
@@ -237,29 +239,35 @@ def main():
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    class_indices = get_firebase_data('Class/class_index')
-    if not class_indices or not isinstance(class_indices, dict):
-        print("Classインデックスを取得できませんでした。")
+    # Coursesから全てのコースIDを取得
+    courses = get_firebase_data('Courses')
+    if not courses or not isinstance(courses, dict):
+        print("コースデータを取得できませんでした。")
         return
 
-    for class_index, class_data in class_indices.items():
-        spreadsheet_id = class_data.get("class_sheet_id")
+    for course_id, course_data in courses.items():
+        if not course_id.isdigit():
+            continue  # コースIDが数値でない場合はスキップ
+
+        course_id = int(course_id)  # コースIDを整数に変換
+        spreadsheet_id = get_course_sheet_id(course_id)
         if not spreadsheet_id:
-            print(f"クラス {class_index} のスプレッドシートIDが見つかりません。")
             continue
 
-        student_names, attendance_numbers = get_student_data(class_index)
+        student_names = get_student_data(course_id)
         if not student_names:
-            print(f"クラス {class_index} に一致する学生名が見つかりませんでした。")
+            print(f"コース {course_id} に一致する学生名が見つかりませんでした。")
             continue
-        
+
         for month in range(1, 13):
-            print(f"Processing month: {month} for class index: {class_index}")
-            requests = prepare_update_requests(class_index, student_names, attendance_numbers, month, sheets_service, spreadsheet_id)
+            print(f"Processing month: {month} for course ID: {course_id}")
+            # 必要なリクエストを準備
+            requests = prepare_update_requests(course_id, student_names, month, sheets_service, spreadsheet_id)
             if not requests:
                 print(f"月 {month} のシートを更新するリクエストがありません。")
                 continue
 
+            # リクエストを送信
             execute_with_retry(
                 sheets_service.spreadsheets().batchUpdate(
                     spreadsheetId=spreadsheet_id,
