@@ -259,9 +259,8 @@ def main():
 
     # 各コースに対して処理を行う
     for course_id, course_data in courses_data.items():
-        try:
-            course_id = int(course_id)  # course_id は数値型
-        except ValueError:
+        # コースIDが数値形式か確認
+        if not course_id.isdigit():
             print(f"無効なコースID: {course_id}")
             continue
 
