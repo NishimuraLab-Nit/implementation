@@ -73,7 +73,7 @@ def get_student_names(student_indices):
     student_names = []
 
     for student_index in student_indices:
-        student_name_path = f"Students/student_info/{student_index}/student_name"
+        student_name_path = f"Students/student_info/student_index/{student_index}/student_name"
         student_name = get_firebase_data(student_name_path)
         if student_name:
             student_names.append(student_name)
