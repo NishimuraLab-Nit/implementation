@@ -45,7 +45,10 @@ def get_student_names(student_indices):
     return student_names
 
 def get_sheet_id(course_id):
-    return get_firebase_data(f"Courses/course_id/{course_id}/course_sheet_id")
+    sheet_data = get_firebase_data(f"Courses/course_id/{course_id}/course_sheet_id")
+    if not sheet_data:
+        return None
+    return int(sheet_data)  # Convert to integer for sheetId compatibility
 
 def prepare_update_requests(sheet_id, student_names, month, year=2025):
     requests = []
