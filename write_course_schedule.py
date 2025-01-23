@@ -36,6 +36,16 @@ def get_firebase_data(ref_path):
     except Exception as e:
         print(f"Firebaseデータ取得エラー: {e}")
         return None
+# FirebaseからシートIDを取得
+def get_sheet_id(course_id):
+    print(f"Fetching sheet ID for course ID: {course_id}...")
+    sheet_id_path = f"Courses/course_id/{course_id}/course_sheet_id"
+    sheet_id = get_firebase_data(sheet_id_path)
+    if not sheet_id:
+        print(f"No sheet ID found for course ID: {course_id}")
+    else:
+        print(f"Sheet ID fetched: {sheet_id}")
+    return sheet_id
 
 # Firebaseからcourse_idリストを取得
 def get_course_ids():
