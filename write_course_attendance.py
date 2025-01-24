@@ -4,7 +4,9 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
+# ---------------------
 # Firebase & GSpread初期化
+# ---------------------
 if not firebase_admin._apps:
     cred = credentials.Certificate('/tmp/firebase_service_account.json')
     firebase_admin.initialize_app(cred, {
@@ -16,131 +18,104 @@ scope = ["https://spreadsheets.google.com/feeds",
 creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
 gclient = gspread.authorize(creds)
 
-# Firebaseからデータ取得
+# ---------------------
+# Firebaseアクセス関連
+# ---------------------
 def get_data_from_firebase(path):
-    print(f"Firebaseからデータを取得: {path}")
     ref = db.reference(path)
-    data = ref.get()
-    print(f"取得したデータ: {data}")
-    return data
+    return ref.get()
 
-# 時間のパース
+# ---------------------
+# ユーティリティ
+# ---------------------
 def parse_datetime(dt_str, fmt="%Y-%m-%d %H:%M:%S"):
+    if not dt_str:
+        return None
     try:
         return datetime.datetime.strptime(dt_str, fmt)
-    except (ValueError, TypeError):
-        print(f"日時のパースに失敗: {dt_str}")
+    except:
         return None
 
 def parse_hhmm_range(range_str):
+    if not range_str:
+        return None, None
     try:
         start_str, end_str = range_str.split("~")
         sh, sm = map(int, start_str.split(":"))
         eh, em = map(int, end_str.split(":"))
-        return datetime.time(sh, sm), datetime.time(eh, em)
+        return datetime.time(sh, sm, 0), datetime.time(eh, em, 0)
     except:
-        print(f"時間範囲のパースに失敗: {range_str}")
         return None, None
 
-def combine_date_and_time(date, time):
-    return datetime.datetime(date.year, date.month, date.day, time.hour, time.minute)
+def combine_date_and_time(date_dt, time_obj):
+    return datetime.datetime(
+        date_dt.year, date_dt.month, date_dt.day,
+        time_obj.hour, time_obj.minute, time_obj.second
+    )
 
-# 出席判定ロジック
-def judge_attendance(entry_dt, exit_dt, start_dt, finish_dt):
-    print(f"出席判定中: entry={entry_dt}, exit={exit_dt}, start={start_dt}, finish={finish_dt}")
-    td_5min = datetime.timedelta(minutes=5)
-
-    if entry_dt >= finish_dt:
-        print("判定結果: ×")
-        return "×"
-    if entry_dt <= (start_dt + td_5min) and (exit_dt is None or exit_dt >= finish_dt):
-        print("判定結果: ○")
-        return "○"
-    if entry_dt > (start_dt + td_5min):
-        print("判定結果: △遅")
-        return "△遅"
-    print("判定結果: △早")
-    return "△早"
-
-# 出席データの処理とシートへの書き込み
+# ---------------------
+# メインフロー
+# ---------------------
 def process_attendance_and_write_sheet():
-    print("出席データ処理を開始します。")
-    courses = get_data_from_firebase("Courses")
-    if not courses:
-        print("Coursesデータが存在しません。")
+    courses_data = get_data_from_firebase("Courses/course_id")
+    if not courses_data:
+        print("Courses データがありません。終了します。")
         return
 
-    # Coursesデータがリストまたは辞書かを判定
-    if isinstance(courses, list):
-        course_list = [course for course in courses if isinstance(course, dict) and course is not None]
-    elif isinstance(courses, dict):
-        course_list = [value for key, value in courses.items() if isinstance(value, dict) and value is not None]
-    else:
-        print("無効なCoursesデータ形式です。")
-        return
-
-    for course_data in course_list:
-        print(f"コースデータ: {course_data}")
-        schedule = course_data.get("schedule", {})
-        course_sheet_id = course_data.get("course_sheet_id")
-        if not course_sheet_id:
-            print("シートIDが見つかりません。")
+    for course_id, course_info in enumerate(courses_data):
+        if course_id == 0 or not course_info:
             continue
 
-        try:
+        course_sheet_id = course_info.get("course_sheet_id")
+        schedule_info = course_info.get("schedule", {})
+        time_range_str = schedule_info.get("time", "")
+        start_time, end_time = parse_hhmm_range(time_range_str)
+        if not course_sheet_id or not start_time or not end_time:
+            continue
+
+        enrollment_path = f"Students/enrollment/course_id/{course_id}"
+        enrollment_data = get_data_from_firebase(enrollment_path)
+
+        if not enrollment_data:
+            continue
+
+        for student_index, _ in enrollment_data.items():
+            student_info_path = f"Students/student_info/{student_index}"
+            student_info = get_data_from_firebase(student_info_path)
+
+            if not student_info:
+                continue
+
+            student_id = student_info.get("student_id")
+            attendance_path = f"Students/attendance/student_id/{student_id}"
+            attendance_data = get_data_from_firebase(attendance_path)
+
+            if not attendance_data:
+                continue
+
             sheet = gclient.open_by_key(course_sheet_id)
-            print(f"シート接続成功: {course_sheet_id}")
-        except Exception as e:
-            print(f"シート接続エラー: {e}")
-            continue
+            sheet_name = datetime.datetime.now().strftime("%Y-%m")
+            try:
+                worksheet = sheet.worksheet(sheet_name)
+            except gspread.exceptions.WorksheetNotFound:
+                worksheet = sheet.add_worksheet(title=sheet_name, rows=50, cols=50)
 
-        enrollments = get_data_from_firebase(f"Students/enrollment/course_id/{course_data.get('serial_number')}")
-        if not enrollments:
-            print("登録データが見つかりません。")
-            continue
-
-        for student_index, enrollment in enrollments.items():
-            print(f"受講生インデックス: {student_index}, 登録データ: {enrollment}")
-            student_id = get_data_from_firebase(f"Students/student_info/student_index/{student_index}/student_id")
-            if not student_id:
-                print(f"受講生インデックス {student_index} に対応する学生IDが見つかりません。")
-                continue
-
-            attendance = get_data_from_firebase(f"Students/attendance/student_id/{student_id}")
-            if not attendance:
-                print(f"学生ID {student_id} の出席データが見つかりません。")
-                continue
-
-            for entry_key, entry_data in attendance.items():
+            for entry_key, entry_data in attendance_data.items():
                 entry_dt = parse_datetime(entry_data.get("read_datetime"))
                 if not entry_dt:
-                    print(f"無効なエントリーデータ: {entry_data}")
-                    continue
-
-                start_time, end_time = parse_hhmm_range(schedule.get("time"))
-                if not start_time or not end_time:
-                    print(f"無効なスケジュール時間: {schedule.get('time')}")
                     continue
 
                 start_dt = combine_date_and_time(entry_dt.date(), start_time)
                 end_dt = combine_date_and_time(entry_dt.date(), end_time)
-                status = judge_attendance(entry_dt, None, start_dt, end_dt)
 
-                yyyymm = entry_dt.strftime("%Y-%m")
+                status = "×" if entry_dt >= end_dt else "○"
                 day = entry_dt.day
 
-                try:
-                    worksheet = sheet.worksheet(yyyymm)
-                except gspread.exceptions.WorksheetNotFound:
-                    print(f"シート {yyyymm} が見つかりません。新規作成します。")
-                    worksheet = sheet.add_worksheet(title=yyyymm, rows=50, cols=50)
-
-                row = int(student_index) + 1
+                row = int(student_index.split("E")[-1]) + 1
                 col = day + 1
-                print(f"シートに書き込み: 行={row}, 列={col}, 値={status}")
                 worksheet.update_cell(row, col, status)
 
-    print("出席処理が完了しました。")
+    print("=== 出席判定処理＆シート書き込み完了 ===")
 
 if __name__ == "__main__":
     process_attendance_and_write_sheet()
