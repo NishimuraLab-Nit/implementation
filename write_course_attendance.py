@@ -208,7 +208,7 @@ def process_attendance_and_write_sheet():
                     status, new_entry_dt, new_exit_dt, next_course_data = judge_attendance(entry_dt, exit_dt, start_dt, finish_dt)
 
                     col = entry_date.day + 1
-                    row = student_row_map[student_index]
+                    row = student_row_map[student_index] + 1
                     print(f"Preparing to write status {status} to sheet at row {row}, col {col}")
 
                     try:
