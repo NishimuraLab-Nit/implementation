@@ -80,11 +80,11 @@ def judge_attendance_for_course(entry_dt, exit_dt, start_dt, finish_dt):
 
     # (4) 正常(○) ①
     if (entry_dt <= (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt <= (finish_dt + td_5min)):
-        return "○", entry_dt, exit_dt, None
+        return "〇", entry_dt, exit_dt, None
 
     # (4) 正常(○) ②: exit > finish+5分
     if (exit_dt is not None) and (exit_dt > (finish_dt + td_5min)):
-        status_str = "○"
+        status_str = "〇"
         original_exit = exit_dt
         updated_exit_dt = finish_dt
         next_entry_dt = finish_dt + td_10min
@@ -166,7 +166,6 @@ def process_attendance_and_write_sheet():
 
         base_date = first_entry_dt.date()
         # エントリー時点の曜日
-        #   例: "Monday", "Tuesday", ...
         entry_weekday_str = first_entry_dt.strftime("%A")
 
         # -----------------
@@ -188,15 +187,12 @@ def process_attendance_and_write_sheet():
 
             # 曜日が不一致ならスキップ
             if day_str and (day_str != entry_weekday_str):
-                # day_strが空の場合は特にスキップしない、としている
                 continue
 
             # time_rangeが無いならスキップ
             if not time_range_str:
                 continue
 
-            # validコースリストに追加
-            #   (c_id_int, time_range_str, day_str) など必要なものを入れておく
             valid_courses.append((c_id_int, time_range_str, day_str))
 
         # もし全スキップされて valid_coursesが空なら何もしない
@@ -212,9 +208,12 @@ def process_attendance_and_write_sheet():
         for new_course_idx, (c_id_int, time_range_str, day_str) in enumerate(valid_courses, start=1):
             # pair_index が足りなければ欠席扱いする
             if pair_index >= len(entry_exit_pairs):
-                # ペア不足
                 absent_date = base_date.strftime("%Y-%m-%d")
                 results_dict[(student_index, new_course_idx, absent_date)] = "×"
+                
+                # ▼変更点：出席判定結果を「decision=×」として保存
+                decision_path = f"Students/attendance/student_id/{student_id}/course_id/{c_id_int}/decision"
+                db.reference(decision_path).child(absent_date).set("decision=×")
                 continue
 
             # entry/exit 取得
@@ -233,6 +232,10 @@ def process_attendance_and_write_sheet():
                 # entry無 → 欠席
                 absent_date = base_date.strftime("%Y-%m-%d")
                 results_dict[(student_index, new_course_idx, absent_date)] = "×"
+
+                # ▼変更点：出席判定結果を「decision=×」として保存
+                decision_path = f"Students/attendance/student_id/{student_id}/course_id/{c_id_int}/decision"
+                db.reference(decision_path).child(absent_date).set("decision=×")
                 continue
 
             # コース開始/終了
@@ -243,6 +246,7 @@ def process_attendance_and_write_sheet():
             start_dt = combine_date_and_time(base_date, start_t)
             finish_dt = combine_date_and_time(base_date, finish_t)
 
+            # 出席判定
             status, new_entry_dt, new_exit_dt, next_course_data = judge_attendance_for_course(
                 entry_dt, exit_dt, start_dt, finish_dt
             )
@@ -285,13 +289,18 @@ def process_attendance_and_write_sheet():
                 # ローカルペアに追加
                 entry_exit_pairs.append((next_ekey, next_xkey))
 
+            # Firebaseのentry/exit時刻を更新
             if updates:
                 att_path = f"Students/attendance/student_id/{student_id}"
                 update_data_in_firebase(att_path, updates)
 
+            # 出席判定結果を results_dict に格納
             date_str = base_date.strftime("%Y-%m-%d")
-            # 結果を results_dict に格納
             results_dict[(student_index, new_course_idx, date_str)] = status
+
+            # ▼変更点：出席判定結果を「decision=〇」などとして保存
+            decision_path = f"Students/attendance/student_id/{student_id}/course_id/{c_id_int}/decision"
+            db.reference(decision_path).child(date_str).set(f"decision={status}")
 
     # -----------------
     # シート書き込み
