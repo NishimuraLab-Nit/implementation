@@ -166,6 +166,9 @@ def process_attendance_and_write_sheet():
             print(f"Worksheet not found. Creating new worksheet: {sheet_name}")
             worksheet = sheet.add_worksheet(title=sheet_name, rows=100, cols=31)
 
+        student_row_map = {}
+        row_counter = 2  # Row 1 is header
+
         for student_id, entries in attendance_data.items():
             print(f"Processing student_id: {student_id}")
 
@@ -179,6 +182,10 @@ def process_attendance_and_write_sheet():
             if str(course_id) not in enrolled_courses:
                 print(f"Student {student_id} not enrolled in course_id: {course_id}")
                 continue
+
+            if student_index not in student_row_map:
+                student_row_map[student_index] = row_counter
+                row_counter += 1
 
             for entry_key, entry_value in entries.items():
                 if "entry" in entry_key:
@@ -201,7 +208,7 @@ def process_attendance_and_write_sheet():
                     status, new_entry_dt, new_exit_dt, next_course_data = judge_attendance(entry_dt, exit_dt, start_dt, finish_dt)
 
                     col = entry_date.day + 1
-                    row = int(student_index[1:]) + 1
+                    row = student_row_map[student_index]
                     print(f"Preparing to write status {status} to sheet at row {row}, col {col}")
 
                     try:
