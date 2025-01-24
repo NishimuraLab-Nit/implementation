@@ -70,16 +70,25 @@ def process_attendance_and_write_sheet():
         print("Coursesデータが存在しません。")
         return
 
-    for course_id, course_data in courses.items():
+    # Coursesデータがリストまたは辞書かを判定
+    if isinstance(courses, list):
+        course_list = [course for course in courses if isinstance(course, dict)]
+    elif isinstance(courses, dict):
+        course_list = list(courses.values())
+    else:
+        print("無効なCoursesデータ形式です。")
+        return
+
+    for course_data in course_list:
         if not isinstance(course_data, dict):
             print(f"無効なコースデータ: {course_data}")
             continue
 
-        print(f"コースID: {course_id}, コースデータ: {course_data}")
+        print(f"コースデータ: {course_data}")
         schedule = course_data.get("schedule", {})
         course_sheet_id = course_data.get("course_sheet_id")
         if not course_sheet_id:
-            print(f"コースID {course_id} のシートIDが見つかりません。")
+            print("シートIDが見つかりません。")
             continue
 
         try:
@@ -89,14 +98,14 @@ def process_attendance_and_write_sheet():
             print(f"シート接続エラー: {e}")
             continue
 
-        enrollments = get_data_from_firebase(f"Students/enrollment/course_id/{course_id}")
+        enrollments = get_data_from_firebase(f"Students/enrollment/course_id/{course_data.get('serial_number')}")
         if not enrollments:
-            print(f"コースID {course_id} に対応する登録データが見つかりません。")
+            print("登録データが見つかりません。")
             continue
 
         for student_index, enrollment in enrollments.items():
             print(f"受講生インデックス: {student_index}, 登録データ: {enrollment}")
-            student_id = get_data_from_firebase(f"Students/student_info/{student_index}/student_id")
+            student_id = get_data_from_firebase(f"Students/student_info/student_index/{student_index}/student_id")
             if not student_id:
                 print(f"受講生インデックス {student_index} に対応する学生IDが見つかりません。")
                 continue
