@@ -70,30 +70,55 @@ def combine_date_and_time(date_dt, time_obj):
 # ---------------------
 def judge_attendance(entry_dt, exit_dt, start_dt, finish_dt):
     td_5min = datetime.timedelta(minutes=5)
+    td_10min = datetime.timedelta(minutes=10)
     print(f"Judging attendance: entry={entry_dt}, exit={exit_dt}, start={start_dt}, finish={finish_dt}")
 
+    # (1) 欠席(×)
     if entry_dt >= finish_dt:
         print("Attendance result: ×")
-        return "×"
+        return "×", entry_dt, exit_dt, None
 
+    # (2) 早退(△早)
     if (entry_dt <= (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt < (finish_dt - td_5min)):
         delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
         result = f"△早{delta_min}分"
         print(f"Attendance result: {result}")
-        return result
+        return result, entry_dt, exit_dt, None
 
+    # (3) 遅刻(△遅)
     if (entry_dt > (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt <= (finish_dt + td_5min)):
         delta_min = int((entry_dt - start_dt).total_seconds() // 60)
         result = f"△遅{delta_min}分"
         print(f"Attendance result: {result}")
-        return result
+        return result, entry_dt, exit_dt, None
 
+    # (4) 正常(○) ①
     if (entry_dt <= (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt <= (finish_dt + td_5min)):
         print("Attendance result: ○")
-        return "○"
+        return "○", entry_dt, exit_dt, None
 
+    # (4) 正常(○) ②: exit > finish+5分
+    if (exit_dt is not None) and (exit_dt > (finish_dt + td_5min)):
+        status_str = "○"
+        original_exit = exit_dt
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = original_exit
+        print("Attendance result: ○ with extended exit")
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    # (4) 正常(○) ③: exit=None
+    if exit_dt is None:
+        status_str = "○"
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = None
+        print("Attendance result: ○ with no exit")
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    # その他
     print("Attendance result: ？")
-    return "？"
+    return "？", entry_dt, exit_dt, None
 
 # ---------------------
 # メイン処理
@@ -171,7 +196,7 @@ def process_attendance_and_write_sheet():
                     start_dt = combine_date_and_time(entry_date, start_time)
                     finish_dt = combine_date_and_time(entry_date, finish_time)
 
-                    status = judge_attendance(entry_dt, exit_dt, start_dt, finish_dt)
+                    status, new_entry_dt, new_exit_dt, next_course_data = judge_attendance(entry_dt, exit_dt, start_dt, finish_dt)
 
                     col = entry_date.day + 1
                     row = int(student_index[1:]) + 1
