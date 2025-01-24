@@ -205,8 +205,12 @@ def process_attendance_and_write_sheet():
                     print(f"Preparing to write status {status} to sheet at row {row}, col {col}")
 
                     try:
-                        worksheet.update_cell(row, col, status)
-                        print(f"Successfully wrote status {status} to row {row}, col {col}")
+                        current_value = worksheet.cell(row, col).value
+                        if current_value != status:
+                            worksheet.update_cell(row, col, status)
+                            print(f"Successfully wrote status {status} to row {row}, col {col}")
+                        else:
+                            print(f"Skipped writing status {status} to row {row}, col {col} as it already contains the same value.")
                     except Exception as e:
                         print(f"Failed to write to sheet at row {row}, col {col}. Error: {e}")
 
