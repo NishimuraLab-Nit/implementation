@@ -12,73 +12,95 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred, {
         'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
     })
+    print("Firebase initialized.")
 
 scope = ["https://spreadsheets.google.com/feeds", 
          "https://www.googleapis.com/auth/drive"]
 creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
 gclient = gspread.authorize(creds)
+print("Google Sheets API authorized.")
 
 # ---------------------
 # Firebaseアクセス関連
 # ---------------------
 def get_data_from_firebase(path):
+    print(f"Fetching data from Firebase path: {path}")
     ref = db.reference(path)
-    return ref.get()
+    data = ref.get()
+    if data is None:
+        print(f"No data found at path: {path}")
+    return data
 
 # ---------------------
 # ユーティリティ
 # ---------------------
 def parse_datetime(dt_str, fmt="%Y-%m-%d %H:%M:%S"):
     if not dt_str:
+        print("Datetime string is empty.")
         return None
     try:
         return datetime.datetime.strptime(dt_str, fmt)
-    except:
+    except Exception as e:
+        print(f"Error parsing datetime: {dt_str} with format {fmt}. Error: {e}")
         return None
 
 def parse_hhmm_range(range_str):
     if not range_str:
+        print("Time range string is empty.")
         return None, None
     try:
         start_str, end_str = range_str.split("~")
         sh, sm = map(int, start_str.split(":"))
         eh, em = map(int, end_str.split(":"))
         return datetime.time(sh, sm, 0), datetime.time(eh, em, 0)
-    except:
+    except Exception as e:
+        print(f"Error parsing time range: {range_str}. Error: {e}")
         return None, None
 
 def combine_date_and_time(date_dt, time_obj):
-    return datetime.datetime(
+    combined = datetime.datetime(
         date_dt.year, date_dt.month, date_dt.day,
         time_obj.hour, time_obj.minute, time_obj.second
     )
+    print(f"Combined date and time: {combined}")
+    return combined
 
 # ---------------------
 # 出席判定ロジック
 # ---------------------
 def judge_attendance(entry_dt, exit_dt, start_dt, finish_dt):
     td_5min = datetime.timedelta(minutes=5)
+    print(f"Judging attendance: entry={entry_dt}, exit={exit_dt}, start={start_dt}, finish={finish_dt}")
 
     if entry_dt >= finish_dt:
+        print("Attendance result: ×")
         return "×"
 
     if (entry_dt <= (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt < (finish_dt - td_5min)):
         delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
-        return f"△早{delta_min}分"
+        result = f"△早{delta_min}分"
+        print(f"Attendance result: {result}")
+        return result
 
     if (entry_dt > (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt <= (finish_dt + td_5min)):
         delta_min = int((entry_dt - start_dt).total_seconds() // 60)
-        return f"△遅{delta_min}分"
+        result = f"△遅{delta_min}分"
+        print(f"Attendance result: {result}")
+        return result
 
     if (entry_dt <= (start_dt + td_5min)) and (exit_dt is not None) and (exit_dt <= (finish_dt + td_5min)):
+        print("Attendance result: ○")
         return "○"
 
+    print("Attendance result: ？")
     return "？"
 
 # ---------------------
 # メイン処理
 # ---------------------
 def process_attendance_and_write_sheet():
+    print("Starting attendance processing...")
+
     courses_data = get_data_from_firebase("Courses/course_id")
     attendance_data = get_data_from_firebase("Students/attendance/student_id")
     student_info_data = get_data_from_firebase("Students/student_info")
@@ -89,6 +111,7 @@ def process_attendance_and_write_sheet():
 
     for course_id, course_info in enumerate(courses_data):
         if not course_info or course_id == 0:
+            print(f"Skipping invalid course_id: {course_id}")
             continue
 
         course_sheet_id = course_info.get("course_sheet_id")
@@ -98,7 +121,10 @@ def process_attendance_and_write_sheet():
         start_time, finish_time = parse_hhmm_range(time_range)
 
         if not course_sheet_id or not start_time or not finish_time:
+            print(f"Invalid schedule or sheet ID for course_id: {course_id}")
             continue
+
+        print(f"Processing course_id: {course_id}, sheet_id: {course_sheet_id}")
 
         try:
             sheet = gclient.open_by_key(course_sheet_id)
@@ -110,16 +136,21 @@ def process_attendance_and_write_sheet():
         try:
             worksheet = sheet.worksheet(sheet_name)
         except gspread.exceptions.WorksheetNotFound:
+            print(f"Worksheet not found. Creating new worksheet: {sheet_name}")
             worksheet = sheet.add_worksheet(title=sheet_name, rows=100, cols=31)
 
         for student_id, entries in attendance_data.items():
+            print(f"Processing student_id: {student_id}")
+
             student_index = student_info_data.get("student_id", {}).get(student_id, {}).get("student_index")
             if not student_index:
+                print(f"Student index not found for student_id: {student_id}")
                 continue
 
             enrollment_data = get_data_from_firebase(f"Students/enrollment/student_index/{student_index}")
             enrolled_courses = enrollment_data.get("course_id", "").split(",")
             if str(course_id) not in enrolled_courses:
+                print(f"Student {student_id} not enrolled in course_id: {course_id}")
                 continue
 
             for entry_key, entry_value in entries.items():
@@ -129,10 +160,12 @@ def process_attendance_and_write_sheet():
                     exit_dt = parse_datetime(entries.get(exit_key, {}).get("read_datetime"))
 
                     if not entry_dt:
+                        print(f"No valid entry datetime for key: {entry_key}")
                         continue
 
                     entry_date = entry_dt.date()
                     if entry_date.strftime("%A") != day:
+                        print(f"Entry date {entry_date} does not match course day {day}.")
                         continue
 
                     start_dt = combine_date_and_time(entry_date, start_time)
@@ -142,6 +175,7 @@ def process_attendance_and_write_sheet():
 
                     col = entry_date.day + 1
                     row = int(student_index[1:]) + 1
+                    print(f"Writing status {status} to sheet at row {row}, col {col}")
                     worksheet.update_cell(row, col, status)
 
     print("処理が完了しました。")
