@@ -72,18 +72,14 @@ def process_attendance_and_write_sheet():
 
     # Coursesデータがリストまたは辞書かを判定
     if isinstance(courses, list):
-        course_list = [course for course in courses if isinstance(course, dict)]
+        course_list = [course for course in courses if isinstance(course, dict) and course is not None]
     elif isinstance(courses, dict):
-        course_list = list(courses.values())
+        course_list = [value for key, value in courses.items() if isinstance(value, dict) and value is not None]
     else:
         print("無効なCoursesデータ形式です。")
         return
 
     for course_data in course_list:
-        if not isinstance(course_data, dict):
-            print(f"無効なコースデータ: {course_data}")
-            continue
-
         print(f"コースデータ: {course_data}")
         schedule = course_data.get("schedule", {})
         course_sheet_id = course_data.get("course_sheet_id")
