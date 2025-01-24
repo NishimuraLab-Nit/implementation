@@ -153,6 +153,7 @@ def process_attendance_and_write_sheet():
 
         try:
             sheet = gclient.open_by_key(course_sheet_id)
+            print(f"Opened sheet with ID: {course_sheet_id}")
         except gspread.exceptions.SpreadsheetNotFound:
             print(f"シートが見つかりません: {course_sheet_id}")
             continue
@@ -160,6 +161,7 @@ def process_attendance_and_write_sheet():
         sheet_name = datetime.datetime.now().strftime("%Y-%m")
         try:
             worksheet = sheet.worksheet(sheet_name)
+            print(f"Found existing worksheet: {sheet_name}")
         except gspread.exceptions.WorksheetNotFound:
             print(f"Worksheet not found. Creating new worksheet: {sheet_name}")
             worksheet = sheet.add_worksheet(title=sheet_name, rows=100, cols=31)
@@ -200,8 +202,13 @@ def process_attendance_and_write_sheet():
 
                     col = entry_date.day + 1
                     row = int(student_index[1:]) + 1
-                    print(f"Writing status {status} to sheet at row {row}, col {col}")
-                    worksheet.update_cell(row, col, status)
+                    print(f"Preparing to write status {status} to sheet at row {row}, col {col}")
+
+                    try:
+                        worksheet.update_cell(row, col, status)
+                        print(f"Successfully wrote status {status} to row {row}, col {col}")
+                    except Exception as e:
+                        print(f"Failed to write to sheet at row {row}, col {col}. Error: {e}")
 
     print("処理が完了しました。")
 
