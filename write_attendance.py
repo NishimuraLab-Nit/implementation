@@ -128,7 +128,7 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
         and exit_dt <= (finish_dt + td_5min)):
         return "〇", entry_dt, exit_dt, None
 
-    # (3-2)
+    # (3-2.1)
     if (entry_dt and exit_dt
         and entry_dt <= (start_dt + td_5min)
         and exit_dt >= (finish_dt + td_5min)):
@@ -138,6 +138,30 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
         next_entry_dt = finish_dt + td_10min
         next_exit_dt  = original_exit
         return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    # (3-2.2)
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt >= (finish_dt + td_5min)):
+        original_exit = exit_dt
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt  = original_exit
+        delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
+            
+        return f"△早{delta_min}分", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    # (3-2.3)
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt >= (finish_dt + td_5min)):
+        original_exit = exit_dt
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt  = original_exit
+        delta_min = int((entry_dt - start_dt).total_seconds() // 60)
+            
+        return f"△遅{delta_min}分", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
     # (3-3)
     if (entry_dt and (exit_dt is None)):
