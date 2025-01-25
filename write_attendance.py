@@ -89,71 +89,91 @@ def parse_hhmm(hhmm_str):
 # ---------------------
 def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     """
-    仕様に基づいた判定を行い、以下を返す:
-      status_str, new_entry_dt, new_exit_dt, next_period_tuple
-    next_period_tuple には (次コマのentry_dt, 次コマのexit_dt) を入れる場合がある
+    仕様:
+      1) 欠席 (×):
+         - entry_dt >= finish_dt
+      2) 早退 (△早):
+         - entry_dt <= start_dt + 5分
+         - exit_dt < finish_dt - 5分
+      3) 出席 (〇) の3パターン:
+         (3-1) entry_dt <= start_dt + 5分 かつ exit_dt <= finish_dt + 5分
+         (3-2) [②のケース] entry_dt <= start_dt + 5分 かつ exit_dt >= finish_dt + 5分
+                → exit1をfinish1に上書き
+                → 次コマ (entry2=finish1+10分, exit2=元exit1)
+         (3-3) [③のケース] exit_dtが無い (None) → exit1=finish1, 次コマ entry2=finish1+10分
+      4) 遅刻 (△遅):
+         - entry_dt > start_dt + 5分
+         - exit_dt <= finish_dt + 5分
+      5) それ以外 (？)
+    戻り値:
+      status_str, new_entry_dt, new_exit_dt, (next_entry_dt, next_exit_dt)
     """
-    print("[DEBUG] ------------------------------")
-    print(f"[DEBUG] judge_attendance_for_period呼び出し")
-    print(f"        entry_dt={entry_dt}, exit_dt={exit_dt}")
-    print(f"        start_dt={start_dt}, finish_dt={finish_dt}")
-    # タイムデルタ
+
+    import datetime
     td_5min  = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
 
-    # (1) 欠席（×）
+    # ----------------------
+    # (1) 欠席 (×)
+    # ----------------------
+    # entry_dt が授業終了時刻以降なら受講していないとみなす
     if entry_dt and entry_dt >= finish_dt:
-        print("[DEBUG] -> 判定: 欠席(×)")
         return "×", entry_dt, exit_dt, None
 
-    # (2) 早退（△早）
-    if (entry_dt and exit_dt and 
-        entry_dt <= start_dt + td_5min and 
-        exit_dt < finish_dt - td_5min):
+    # ----------------------
+    # (2) 早退 (△早)
+    # ----------------------
+    # entry_dt <= start_dt+5分 かつ exit_dt < finish_dt-5分
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt <  (finish_dt - td_5min)):
         delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
-        print(f"[DEBUG] -> 判定: 早退(△早{delta_min}分)")
         return f"△早{delta_min}分", entry_dt, exit_dt, None
 
-    # (3) 出席（〇）
-    #  ① entry_dt <= start_dt+5分 かつ exit_dt <= finish_dt+5分
-    if (entry_dt and exit_dt and
-        entry_dt <= start_dt + td_5min and 
-        exit_dt <= finish_dt + td_5min):
-        print("[DEBUG] -> 判定: 出席(〇)")
+    # ----------------------
+    # (3) 出席 (〇) の3パターン
+    # ----------------------
+    #  (3-1) 通常の〇 (entry_dt <= start+5分, exit_dt <= finish+5分)
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt <= (finish_dt + td_5min)):
         return "〇", entry_dt, exit_dt, None
 
-    #  ② entry_dt <= start_dt+5分 かつ exit_dt > finish_dt+5分
-    if (entry_dt and exit_dt and 
-        entry_dt <= start_dt + td_5min and
-        exit_dt > finish_dt + td_5min):
-        print("[DEBUG] -> 判定: 出席(〇)だが exit_dt が finish+5分より後; 次コマ生成へ")
+    #  (3-2) ② entry_dt <= start_dt+5分 かつ exit_dt >= finish_dt+5分
+    #         → exit1をfinish1に更新し、次コマ (entry2=finish1+10分, exit2=元exit1)
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt >= (finish_dt + td_5min)):
         status_str = "〇"
-        original_exit = exit_dt
-        updated_exit_dt = finish_dt
-        next_entry_dt = finish_dt + td_10min
-        next_exit_dt  = original_exit
+        original_exit = exit_dt  # もともとの exit1
+        updated_exit_dt = finish_dt  # exit1 を finish1 に上書き
+        next_entry_dt = finish_dt + td_10min  # 新しい entry2
+        next_exit_dt  = original_exit        # exit2 は元の exit1
         return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    #  ③ exit_dt が存在しない => exit_dtを finish_dt にして出席扱い
-    if entry_dt and (exit_dt is None):
-        print("[DEBUG] -> 判定: 出席(〇)だが exit_dt が None; exit_dt=finish_dt で次コマ生成へ")
+    #  (3-3) ③ exit_dt が存在しない場合 => exit1=finish1, 次コマ entry2=finish1+10分
+    if (entry_dt and (exit_dt is None)):
         status_str = "〇"
-        updated_exit_dt = finish_dt
+        updated_exit_dt = finish_dt       # exit1 を finish1 に
         next_entry_dt = finish_dt + td_10min
         next_exit_dt = None
         return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    # (4) 遅刻（△遅）
-    if (entry_dt and exit_dt and
-        entry_dt > start_dt + td_5min and 
-        exit_dt <= finish_dt + td_5min):
+    # ----------------------
+    # (4) 遅刻 (△遅)
+    # ----------------------
+    # entry_dt > start_dt+5分 かつ exit_dt <= finish_dt+5分
+    if (entry_dt and exit_dt
+        and entry_dt > (start_dt + td_5min)
+        and exit_dt <= (finish_dt + td_5min)):
         delta_min = int((entry_dt - start_dt).total_seconds() // 60)
-        print(f"[DEBUG] -> 判定: 遅刻(△遅{delta_min}分)")
         return f"△遅{delta_min}分", entry_dt, exit_dt, None
 
-    # それ以外
-    print("[DEBUG] -> 判定: ？（その他のケース）")
+    # ----------------------
+    # (5) その他 (？)
+    # ----------------------
     return "？", entry_dt, exit_dt, None
+
 
 
 # ---------------------
@@ -287,8 +307,8 @@ def process_attendance_and_write_sheet():
             if ekey not in att_dict:
                 print(f"[DEBUG] {ekey} が無いため欠席(×)扱いとします。")
                 status = "×"
-                decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision/{date_str}"
-                set_data_in_firebase(decision_path, f"decision={status}")
+                decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
+                set_data_in_firebase(decision_path, f"{status}")
                 results_dict[(student_index, new_course_idx, date_str)] = status
                 continue
 
