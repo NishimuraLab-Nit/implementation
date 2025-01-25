@@ -153,7 +153,7 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
 
     # (3-2.3)
     if (entry_dt and exit_dt
-        and entry_dt <= (start_dt + td_5min)
+        and entry_dt >= (start_dt + td_5min)
         and exit_dt >= (finish_dt + td_5min)):
         original_exit = exit_dt
         updated_exit_dt = finish_dt
