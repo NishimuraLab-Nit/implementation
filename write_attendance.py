@@ -90,69 +90,89 @@ def parse_hhmm(hhmm_str):
 def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     """
     仕様:
-      1) 欠席(×):
+      1) 欠席 (×):
          - entry_dt >= finish_dt
-
-      2) 出席(〇):
-         - entry_dt <= start_dt+5分
-         - exit_dt >= finish_dt+5分
-
-      3) 早退(△早):
-         - entry_dt > start_dt+5分
-         - exit_dt >= finish_dt+5分
-         - delta_min = (finish_dt - exit_dt) 分
-
-      4) 遅刻(△遅):
-         - entry_dt <= start_dt+5分
-         - exit_dt <  finish_dt+5分
-         - delta_min = (entry_dt - start_dt) 分
-
-      5) その他(？)
+      2) 早退 (△早):
+         - entry_dt <= start_dt + 5分
+         - exit_dt < finish_dt - 5分
+      3) 出席 (〇) の3パターン:
+         (3-1) entry_dt <= start_dt + 5分 かつ exit_dt <= finish_dt + 5分
+         (3-2) [②のケース] entry_dt <= start_dt + 5分 かつ exit_dt >= finish_dt + 5分
+                → exit1をfinish1に上書き
+                → 次コマ (entry2=finish1+10分, exit2=元exit1)
+         (3-3) [③のケース] exit_dtが無い (None) → exit1=finish1, 次コマ entry2=finish1+10分
+      4) 遅刻 (△遅):
+         - entry_dt > start_dt + 5分
+         - exit_dt <= finish_dt + 5分
+      5) それ以外 (？)
+    戻り値:
+      status_str, new_entry_dt, new_exit_dt, (next_entry_dt, next_exit_dt)
     """
+    import datetime
+    td_5min  = datetime.timedelta(minutes=5)
+    td_10min = datetime.timedelta(minutes=10)
 
-    td_5min = datetime.timedelta(minutes=5)
-
-    print("[DEBUG] judge_attendance_for_period呼び出し")
-    print(f"[DEBUG] entry_dt={entry_dt}, exit_dt={exit_dt}")
-    print(f"[DEBUG] start_dt={start_dt}, finish_dt={finish_dt}")
-
-    # 1) 欠席(×)
+    # ----------------------
+    # (1) 欠席 (×)
+    # ----------------------
+    # entry_dt が授業終了時刻以降なら受講していないとみなす
     if entry_dt and entry_dt >= finish_dt:
-        print("[DEBUG] => 欠席(×)")
         return "×", entry_dt, exit_dt, None
 
-    # 2) 〇
+    # ----------------------
+    # (2) 早退 (△早)
+    # ----------------------
+    # entry_dt <= start_dt+5分 かつ exit_dt < finish_dt-5分
     if (entry_dt and exit_dt
         and entry_dt <= (start_dt + td_5min)
-        and exit_dt >= (finish_dt + td_5min)):
-        print("[DEBUG] => 出席(〇)")
-        return "〇", entry_dt, exit_dt, None
-
-    # 3) △早
-    #    entry_dt > start_dt+5分 かつ exit_dt >= finish_dt+5分
-    #    delta_min = (finish_dt - exit_dt)分 (通常は負数かもしれないが指定通りに計算)
-    if (entry_dt and exit_dt
-        and entry_dt > (start_dt + td_5min)
-        and exit_dt >= (finish_dt + td_5min)):
+        and exit_dt <  (finish_dt - td_5min)):
         delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
-        print(f"[DEBUG] => 早退(△早{delta_min}分)")
         return f"△早{delta_min}分", entry_dt, exit_dt, None
 
-    # 4) △遅
-    #    entry_dt <= start_dt+5分 かつ exit_dt < finish_dt+5分
-    #    delta_min = (entry_dt - start_dt) 分
+    # ----------------------
+    # (3) 出席 (〇) の3パターン
+    # ----------------------
+    #  (3-1) 通常の〇 (entry_dt <= start+5分, exit_dt <= finish+5分)
     if (entry_dt and exit_dt
         and entry_dt <= (start_dt + td_5min)
-        and exit_dt <  (finish_dt + td_5min)):
+        and exit_dt <= (finish_dt + td_5min)):
+        return "〇", entry_dt, exit_dt, None
+
+    #  (3-2) ② entry_dt <= start_dt+5分 かつ exit_dt >= finish_dt+5分
+    #         → exit1をfinish1に更新し、次コマ (entry2=finish1+10分, exit2=元exit1)
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt >= (finish_dt + td_5min)):
+        status_str = "〇"
+        original_exit = exit_dt  # もともとの exit1
+        updated_exit_dt = finish_dt  # exit1 を finish1 に上書き
+        next_entry_dt = finish_dt + td_10min  # 新しい entry2
+        next_exit_dt  = original_exit        # exit2 は元の exit1
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    #  (3-3) ③ exit_dt が存在しない場合 => exit1=finish1, 次コマ entry2=finish1+10分
+    if (entry_dt and (exit_dt is None)):
+        status_str = "〇"
+        updated_exit_dt = finish_dt       # exit1 を finish1 に
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = None
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    # ----------------------
+    # (4) 遅刻 (△遅)
+    # ----------------------
+    # entry_dt > start_dt+5分 かつ exit_dt <= finish_dt+5分
+    if (entry_dt and exit_dt
+        and entry_dt > (start_dt + td_5min)
+        and exit_dt <= (finish_dt + td_5min)):
         delta_min = int((entry_dt - start_dt).total_seconds() // 60)
-        if delta_min < 0:
-            delta_min = 0  # 必要に応じて負数は0に補正
-        print(f"[DEBUG] => 遅刻(△遅{delta_min}分)")
         return f"△遅{delta_min}分", entry_dt, exit_dt, None
 
-    # 5) その他(？)
-    print("[DEBUG] => ？ (その他)")
+    # ----------------------
+    # (5) その他 (？)
+    # ----------------------
     return "？", entry_dt, exit_dt, None
+
 
 # ---------------------
 # メインフロー
