@@ -83,72 +83,62 @@ def parse_hhmm(hhmm_str):
 # 出席判定ロジック（新仕様）
 # ---------------------
 def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt, period_in_course):
-    """
-    【仕様変更要点】
-      - period=1 のときのみ、新しい仕様(②, ③など)を適用
-      - period=2,3,4 は従来通りのロジックを適用
-
-    仕様②:
-      ・entry1 が「start1＋5分以内」かつ exit1 が「finish1+5分以降」の場合
-        ⇒ exit1をfinish1に上書きし、
-           新たに entry2=finish1+10分, exit2=元のexit1 を作成（Firebaseに保存）,
-           period=1は「〇」を記録
-      ・entry1 が start1+5分以降 かつ exit1 が finish1+5分以降 ⇒ 「△早{delta_min}分」
-      ・entry1 が start1+5分以内 かつ exit1 が finish1+5分以前 ⇒ 「△遅{delta_min}分」
-
-    仕様③:
-      ・もし exit1 が存在しない場合 ⇒ exit1=finish1, entry2=finish1+10分 を作成,
-        period=1は「〇」を記録
-
-    戻り値:
-      status_str, new_entry_dt, new_exit_dt, (next_entry_dt, next_exit_dt)
-       ※次コマの entry/exit を作成する場合はタプルで返す
-    """
-    import datetime
-    td_5min  = datetime.timedelta(minutes=5)
+    td_5min = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
 
-    # entry_dt が finish_dt 以降なら欠席扱い
-    if (entry_dt is None) or (entry_dt >= finish_dt):
+    # 例: period=1（start_dt=08:50）かどうかの判定に利用
+    is_period1 = (start_dt.hour == 8 and start_dt.minute == 50)
+
+    # (1) 欠席(×) 条件
+    if entry_dt is None or entry_dt >= finish_dt:
         return "×", entry_dt, exit_dt, None
 
-    # -----------------------------------
-    # period=1 の場合: 新仕様を適用
-    # -----------------------------------
-    if period_in_course == 1:
-        # ③ exit1 が存在しない場合
-        if exit_dt is None:
-            # exit1 = finish1
-            updated_exit_dt = finish_dt
-            # 次コマの entry2=finish1+10分, exit2=None
-            next_entry_dt = finish_dt + td_10min
-            next_exit_dt  = None
-            # period=1 は「〇」
-            return "〇", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+    # (2) exit_dt が None => exit1=finish1, entry2=finish1+10分
+    if exit_dt is None:
+        status_str = "〇" if is_period1 else "〇"
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = None
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-        # ②-1: entry1 ≤ start1+5分 かつ exit1 ≥ finish1+5分 ⇒ 「〇」
-        #       exit1=finish1 に上書き, entry2=finish1+10分, exit2=元exit1
-        if (entry_dt <= start_dt + td_5min) and (exit_dt >= finish_dt + td_5min):
-            original_exit = exit_dt
-            updated_exit_dt = finish_dt  # exit1 → finish1
-            next_entry_dt = finish_dt + td_10min  # entry2
-            next_exit_dt  = original_exit        # exit2
-            return "〇", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+    # (3) entry1 <= start1+5分 かつ exit1 >= finish1+5分
+    #     => exit1=finish1、entry2=finish1+10分、exit2=元exit1
+    if entry_dt <= (start_dt + td_5min) and exit_dt >= (finish_dt + td_5min):
+        status_str = "〇" if is_period1 else "〇"
+        original_exit = exit_dt
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = original_exit
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-        # ②-2: entry1 >= start1+5分 かつ exit1 >= finish1+5分 ⇒ 「△早{delta_min}分」
-        #       ※delta_min は一例として (exit_dt - finish_dt)
-        if (entry_dt >= start_dt + td_5min) and (exit_dt >= finish_dt + td_5min):
-            delta_min = int((exit_dt - finish_dt).total_seconds() // 60)
-            return f"△早{delta_min}分", entry_dt, exit_dt, None
+    # (4) entry1 >= start1+5分 かつ exit1 >= finish1+5分 => 「△早{delta_min}分」
+    #     ここでも (3) と同じ exit1=finish1 等の処理をする
+    if entry_dt >= (start_dt + td_5min) and exit_dt >= (finish_dt + td_5min):
+        over = (exit_dt - (finish_dt + td_5min)).total_seconds() // 60
+        delta_min = int(over) if over > 0 else 0
+        status_str = f"△早{delta_min}分"
+        original_exit = exit_dt
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = original_exit
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-        # ②-3: entry1 ≤ start1+5分 かつ exit1 ≤ finish1+5分 ⇒ 「△遅{delta_min}分」
-        #       ※delta_min は一例として (start_dt - entry_dt)
-        if (entry_dt <= start_dt + td_5min) and (exit_dt <= finish_dt + td_5min):
-            delta_min = int((start_dt - entry_dt).total_seconds() // 60)
-            return f"△遅{delta_min}分", entry_dt, exit_dt, None
+    # (5) entry1 <= start1+5分 かつ exit1 <= finish_dt - 5分 => 「△遅{delta_min}分」
+    #     ここでも (3) と同じ exit1=finish1 等の処理をする
+    if entry_dt <= (start_dt + td_5min) and exit_dt <= (finish_dt - td_5min):
+        # 例: finish_dt-5分 より早い分数を delta として計算
+        early = ((finish_dt - td_5min) - exit_dt).total_seconds() // 60
+        delta_min = int(early) if early > 0 else 0
+        status_str = f"△遅{delta_min}分"
+        original_exit = exit_dt
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = original_exit
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-        # 上記に該当しない場合はデフォルト「〇」
-        return "〇", entry_dt, exit_dt, None
+    # 上記のいずれにも当てはまらない場合
+    return "〇", entry_dt, exit_dt, None
+
 
     # -----------------------------------
     # period=2,3,4 の場合: 従来ロジック
