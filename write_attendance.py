@@ -87,106 +87,90 @@ def parse_hhmm(hhmm_str):
 # ---------------------
 # 出席判定ロジック（新仕様）
 # ---------------------
-def judge_attendance_for_period(period, entry_dt, exit_dt, start_dt, finish_dt):
+def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     """
-    【新仕様】 (2023/xx/xx改訂)
-      ① ②.1 / ②.2 / ②.3 の判定条件
-         ②.1: entry1 が 「start1 + 5分以内」 かつ exit1 が 「finish1 + 5分以降」
-         ②.2: entry1 が 「start1 + 5分以降」 かつ exit1 が 「finish1 + 5分以降」
-         ②.3: entry1 が 「start1 + 5分以内」 かつ exit1 が 「finish1 + 5分以前」
-         
-         これらの場合は exit1 を一旦退避し、exit1 = finish1 に更新。
-         さらに entry2 = finish1 + 10分、exit2 = 退避した exit1 をセットしFirebase更新。
-         - ②.1 のとき period=1 => 「〇」
-         - ②.2 のとき period=1 => 「△遅{delta_min}分」
-         - ②.3 のとき period=1 => 「△早{delta_min}分」
-         （period=1以外の場合も同様に〇/△遅/△早 という形で判定可能）
-
-      ② ③ もし exit1 が存在しない(None)とき
-         exit1 = finish1, entry2 = finish1+10分 を設定しFirebase保存。
-         period=1 => 「〇」を記録。（他periodならそのまま「〇」等でも可）
-
-      ③ 上記以外は × (欠席) や ？ (不明)などの従来パターンへ。
-
+    仕様:
+      1) 欠席 (×):
+         - entry_dt >= finish_dt
+      2) 早退 (△早):
+         - entry_dt <= start_dt + 5分
+         - exit_dt < finish_dt - 5分
+      3) 出席 (〇) の3パターン:
+         (3-1) entry_dt <= start_dt + 5分 かつ exit_dt <= finish_dt + 5分
+         (3-2) [②のケース] entry_dt <= start_dt + 5分 かつ exit_dt >= finish_dt + 5分
+                → exit1をfinish1に上書き
+                → 次コマ (entry2=finish1+10分, exit2=元exit1)
+         (3-3) [③のケース] exit_dtが無い (None) → exit1=finish1, 次コマ entry2=finish1+10分
+      4) 遅刻 (△遅):
+         - entry_dt > start_dt + 5分
+         - exit_dt <= finish_dt + 5分
+      5) それ以外 (？)
     戻り値:
-      status_str, new_entry_dt, new_exit_dt, next_period_data
-        - status_str: 出席ステータス表示用 (ex. "〇", "△遅3分" など)
-        - new_entry_dt: entry1 が更新されたときの新しい datetime
-        - new_exit_dt: exit1 が更新されたときの新しい datetime
-        - next_period_data: 次コマ用の (entry2, exit2) タプル or None
+      status_str, new_entry_dt, new_exit_dt, (next_entry_dt, next_exit_dt)
     """
     import datetime
     td_5min  = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
 
-    # (A) exit1 が無い場合 → ③の処理 ----------------------------------
-    if exit_dt is None:
-        # period=1 の場合は「〇」を記録
-        # （period=2,3,4 でも同じく「〇」扱いなど、運用次第で変更可）
-        status_str = "〇" if period == 1 else "〇"
-        updated_exit_dt = finish_dt             # exit1 = finish1
-        next_entry_dt = finish_dt + td_10min    # entry2 = finish1 + 10分
-        next_exit_dt = None                    # exit2 はまだ無い
-        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
-
-    # (B) ②.1 / ②.2 / ②.3 ---------------------------------------------
-    # ②.1: entry <= start+5分 AND exit >= finish+5分
-    if (entry_dt <= (start_dt + td_5min)) and (exit_dt >= (finish_dt + td_5min)):
-        # period=1 => ②.1は「〇」
-        # （他periodの場合も同様に「〇」とする例）
-        status_str = "〇" if period == 1 else "〇"
-
-        # exit1を一旦退避し、exit1=finish1
-        original_exit = exit_dt
-        updated_exit_dt = finish_dt
-
-        # entry2=finish1+10分, exit2=元exit1
-        next_entry_dt = finish_dt + td_10min
-        next_exit_dt  = original_exit
-        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
-
-    # ②.2: entry >= start+5分 AND exit >= finish+5分
-    if (entry_dt >= (start_dt + td_5min)) and (exit_dt >= (finish_dt + td_5min)):
-        # 遅刻分数を計算 (start+5分からの差)
-        delta_min = int((entry_dt - (start_dt + td_5min)).total_seconds() // 60)
-        # period=1 => 「△遅{delta_min}分」
-        # （他periodの場合も同じ表現）
-        status_str = f"△遅{delta_min}分" if period == 1 else f"△遅{delta_min}分"
-
-        # exit1を一旦退避し、exit1=finish1
-        original_exit = exit_dt
-        updated_exit_dt = finish_dt
-
-        # entry2=finish1+10分, exit2=元exit1
-        next_entry_dt = finish_dt + td_10min
-        next_exit_dt  = original_exit
-        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
-
-    # ②.3: entry <= start+5分 AND exit <= finish+5分
-    if (entry_dt <= (start_dt + td_5min)) and (exit_dt <= (finish_dt + td_5min)):
-        # 早退分数を計算 (finish+5分 からどれだけ早いか)
-        delta_min = int(((finish_dt + td_5min) - exit_dt).total_seconds() // 60)
-        # period=1 => 「△早{delta_min}分」
-        # （他periodの場合も同様）
-        status_str = f"△早{delta_min}分" if period == 1 else f"△早{delta_min}分"
-
-        # exit1を一旦退避し、exit1=finish1
-        original_exit = exit_dt
-        updated_exit_dt = finish_dt
-
-        # entry2=finish1+10分, exit2=元exit1
-        next_entry_dt = finish_dt + td_10min
-        next_exit_dt  = original_exit
-        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
-
-    # (C) それ以外: 欠席 or ？ -----------------------------------------
-    # 例として「entry_dt >= finish_dt は欠席(×)」など、必要に応じて拡張。
-    # ここでは単純に「×」とするか、明確な根拠がなければ「？」とします。
+    # ----------------------
+    # (1) 欠席 (×)
+    # ----------------------
+    # entry_dt が授業終了時刻以降なら受講していないとみなす
     if entry_dt and entry_dt >= finish_dt:
-        # entry_dt が既に終了時刻を過ぎていれば、欠席扱い
         return "×", entry_dt, exit_dt, None
 
-    # どうしても判定できないものは「？(不明)」
+    # ----------------------
+    # (2) 早退 (△早)
+    # ----------------------
+    # entry_dt <= start_dt+5分 かつ exit_dt < finish_dt-5分
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt <  (finish_dt - td_5min)):
+        delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
+        return f"△早{delta_min}分", entry_dt, exit_dt, None
+
+    # ----------------------
+    # (3) 出席 (〇) の3パターン
+    # ----------------------
+    #  (3-1) 通常の〇 (entry_dt <= start+5分, exit_dt <= finish+5分)
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt <= (finish_dt + td_5min)):
+        return "〇", entry_dt, exit_dt, None
+
+    #  (3-2) ② entry_dt <= start_dt+5分 かつ exit_dt >= finish_dt+5分
+    #         → exit1をfinish1に更新し、次コマ (entry2=finish1+10分, exit2=元exit1)
+    if (entry_dt and exit_dt
+        and entry_dt <= (start_dt + td_5min)
+        and exit_dt >= (finish_dt + td_5min)):
+        status_str = "〇"
+        original_exit = exit_dt  # もともとの exit1
+        updated_exit_dt = finish_dt  # exit1 を finish1 に上書き
+        next_entry_dt = finish_dt + td_10min  # 新しい entry2
+        next_exit_dt  = original_exit        # exit2 は元の exit1
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    #  (3-3) ③ exit_dt が存在しない場合 => exit1=finish1, 次コマ entry2=finish1+10分
+    if (entry_dt and (exit_dt is None)):
+        status_str = "〇"
+        updated_exit_dt = finish_dt       # exit1 を finish1 に
+        next_entry_dt = finish_dt + td_10min
+        next_exit_dt = None
+        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    # ----------------------
+    # (4) 遅刻 (△遅)
+    # ----------------------
+    # entry_dt > start_dt+5分 かつ exit_dt <= finish_dt+5分
+    if (entry_dt and exit_dt
+        and entry_dt > (start_dt + td_5min)
+        and exit_dt <= (finish_dt + td_5min)):
+        delta_min = int((entry_dt - start_dt).total_seconds() // 60)
+        return f"△遅{delta_min}分", entry_dt, exit_dt, None
+
+    # ----------------------
+    # (5) その他 (？)
+    # ----------------------
     return "？", entry_dt, exit_dt, None
 
 
@@ -283,7 +267,7 @@ def process_attendance_and_write_sheet():
 
         print(f"[DEBUG] => 曜日({current_weekday_str})が一致するコースID: {valid_course_list}")
 
-        # entry/exit は periodごとに entry{period}, exit{period} が想定される
+        # entry/exit は periodごとに entry{period}, exit{period} が想定されているので、
         # まず最初に存在する entryX の日付を基準とする
         base_date = None
         for i in range(1, 5):
@@ -317,7 +301,7 @@ def process_attendance_and_write_sheet():
             xkey = f"exit{period_in_course}"
             print(f"[DEBUG] 判定対象: course_id={cid_int}, period={period_in_course} -> ekey={ekey}, xkey={xkey}")
 
-            # もし entry(該当period) が無い場合は欠席(×)扱い
+            # もし entry(該当period) が無い場合は欠席扱い
             if ekey not in att_dict:
                 print(f"[DEBUG] {ekey} が無いため欠席(×)扱いとします。")
                 status = "×"
@@ -342,15 +326,14 @@ def process_attendance_and_write_sheet():
                 print(f"[DEBUG] period={period_in_course} が PERIOD_TIME_MAP に無いのでスキップ。")
                 continue
 
-            # 新仕様の出席判定
+            # 出席判定
             status, new_entry_dt, new_exit_dt, next_period_data = judge_attendance_for_period(
-                period_in_course, entry_dt, exit_dt, start_dt, finish_dt
+                entry_dt, exit_dt, start_dt, finish_dt
             )
             print(f"[DEBUG] => 判定結果: {status}")
 
             # 変更がある場合は Firebase の entry/exit を更新
             updates = {}
-            # entry_dt の更新
             if new_entry_dt and (new_entry_dt != entry_dt):
                 print(f"[DEBUG] entry_dt を {new_entry_dt} に更新します。")
                 updates[ekey] = {
@@ -358,8 +341,6 @@ def process_attendance_and_write_sheet():
                     "serial_number": entry_info.get("serial_number", "")
                 }
                 att_dict[ekey] = updates[ekey]
-
-            # exit_dt の更新
             if new_exit_dt and exit_dt and (new_exit_dt != exit_dt):
                 print(f"[DEBUG] exit_dt を {new_exit_dt} に更新します。")
                 updates[xkey] = {
@@ -375,7 +356,7 @@ def process_attendance_and_write_sheet():
                 }
                 att_dict[xkey] = updates[xkey]
 
-            # 次コマ用データがある場合 (②.1/②.2/②.3 に該当したとき等)
+            # 次コマ用データがある場合（exit が finish_dt+5分以降 などのケース）
             if next_period_data:
                 next_e, next_x = next_period_data
                 next_ekey = f"entry{period_in_course + 1}"
