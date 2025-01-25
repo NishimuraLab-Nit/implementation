@@ -365,8 +365,8 @@ def process_attendance_and_write_sheet():
                 update_data_in_firebase(att_path, updates)
 
             # 出席判定結果を Firebase に保存
-            decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision/{date_str}"
-            set_data_in_firebase(decision_path, f"decision={status}")
+            decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
+            set_data_in_firebase(decision_path, f"{status}")
 
             # シート書き込み用に一時保存
             results_dict[(student_index, new_course_idx, date_str)] = status
