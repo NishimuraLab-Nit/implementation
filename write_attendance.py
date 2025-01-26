@@ -445,11 +445,11 @@ def process_attendance_and_write_sheet():
                 # 万一見つからなければスキップ
                 print(f"[DEBUG] cid_str={cid_str} が enrolled_course_ids に見つからないためスキップします。")
                 continue
-            col = course_pos + 1
+            row = course_pos + 1
 
             # row は「日付(day) + 1」にしておく(元コードは new_course_idx + 1 だった場合は適宜修正)
             # 今回は「列をコース順、行を日付」にしたい想定であれば以下のようにする:
-            row = day + 1
+            col = day + 1
 
             print(f"[DEBUG] シート[{yyyymm}] (row={row}, col={col}) に '{status_val}' を書き込みます。")
             ws.update_cell(row, col, status_val)
