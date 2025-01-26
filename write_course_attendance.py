@@ -36,18 +36,35 @@ def get_data_from_firebase(path):
 # ---------------------
 # ヘルパー関数
 # ---------------------
-def get_current_day():
-    # 現在の曜日を取得（例: "Sunday"）
-    return datetime.datetime.now().strftime('%A')
+def get_current_date():
+    # 現在の日付を取得（例: "2025-01-26"）
+    return datetime.datetime.now().strftime('%Y-%m-%d')
 
-def map_day_to_column(day):
-    # 曜日を列番号にマッピング（例: Sunday=3, Monday=4, ..., Saturday=9）
-    days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-    if day in days:
-        # 例えば、Sundayを3にマッピング（ユーザーの要件に応じて調整）
-        return days.index(day) + 3
-    else:
-        raise ValueError(f"Invalid day: {day}")
+def get_current_sheet_name():
+    # 現在の年月を取得して "YYYY-MM" 形式のシート名を生成（例: "2025-01"）
+    return datetime.datetime.now().strftime('%Y-%m')
+
+def map_date_to_column(sheet, current_date):
+    """
+    シートのヘッダー行から現在の日付に対応する列番号を取得します。
+    ヘッダー行のフォーマットは "YYYY-MM-DD" と仮定しています。
+    """
+    try:
+        # ヘッダー行を取得
+        header_row = sheet.row_values(1)
+        print(f"Header row: {header_row}")
+
+        # 日付を検索
+        if current_date in header_row:
+            column = header_row.index(current_date) + 1  # 列番号は1から始まる
+            print(f"Date '{current_date}' found at column {column}.")
+            return column
+        else:
+            print(f"Date '{current_date}' not found in header row.")
+            return None
+    except Exception as e:
+        print(f"Error mapping date to column: {e}")
+        return None
 
 def get_student_indices(student_indices_str):
     # "E523, E534" のような文字列をリストに変換
@@ -57,8 +74,10 @@ def get_student_indices(student_indices_str):
 # メイン処理
 # ---------------------
 def main():
-    current_day = get_current_day()
-    print(f"Current day: {current_day}")
+    current_date = get_current_date()
+    current_sheet_name = get_current_sheet_name()
+    print(f"Current date: {current_date}")
+    print(f"Current sheet name: {current_sheet_name}")
 
     # 1. Courses一覧を取得
     courses_data = get_data_from_firebase('Courses/course_id')
@@ -76,10 +95,10 @@ def main():
             print(f"Course data at index {course_id} is None.")
             continue
         schedule_day = course_info.get('schedule', {}).get('day')
-        if schedule_day == current_day:
+        if schedule_day == datetime.datetime.now().strftime('%A'):
             matched_courses.append((course_id, course_info))
             print(f"Course {course_id} matches the current day.")
-
+    
     if not matched_courses:
         print("No courses match the current day.")
         return
@@ -127,25 +146,35 @@ def main():
                 # 9. Google Sheetを開く
                 sh = gclient.open_by_key(sheet_id)
                 print(f"Opened Google Sheet: {sh.title}")
-                
+
                 # シートの名前を一覧表示
                 worksheets = sh.worksheets()
                 print("Available worksheets:")
                 for ws in worksheets:
                     print(f"- {ws.title}")
-                
-                # 必要に応じてシート名を指定（ここでは最初のシートを使用）
-                sheet = sh.sheet1  # 必要に応じてシート名を変更
-                print(f"Using worksheet: {sheet.title}")
 
-                # 列を決定
-                column = map_day_to_column(current_day)
-                print(f"Mapped day '{current_day}' to column {column}.")
+                # シート名を動的に指定（例: "2025-01"）
+                try:
+                    sheet = sh.worksheet(current_sheet_name)
+                    print(f"Using worksheet: {sheet.title}")
+                except gspread.exceptions.WorksheetNotFound:
+                    print(f"Worksheet named '{current_sheet_name}' not found in spreadsheet {sheet_id}.")
+                    continue
+
+                # 列を決定（現在の日付に基づく列番号を取得）
+                column = map_date_to_column(sheet, current_date)
+                if column is None:
+                    print(f"Cannot update decision for course {course_id}, student {student_idx} because date column is not found.")
+                    continue
 
                 # デバッグ用：シート内の全student_indicesを取得
                 print("Fetching all student indices from the sheet for debugging...")
                 all_values = sheet.col_values(1)  # 例としてA列をstudent_indexとして取得
                 print(f"All student indices in the sheet (Column A): {all_values}")
+
+                if not all_values:
+                    print("No data found in Column A of the sheet.")
+                    continue
 
                 # 学生インデックスを検索（大文字・小文字を無視）
                 student_row = None
@@ -166,7 +195,7 @@ def main():
             except gspread.exceptions.SpreadsheetNotFound:
                 print(f"Spreadsheet with ID {sheet_id} not found.")
             except gspread.exceptions.WorksheetNotFound:
-                print(f"Worksheet not found in spreadsheet {sheet_id}.")
+                print(f"Worksheet '{current_sheet_name}' not found in spreadsheet {sheet_id}.")
             except Exception as e:
                 print(f"Error updating Google Sheet for course {course_id}, student {student_idx}: {e}")
 
