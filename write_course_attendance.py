@@ -9,50 +9,41 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ---------------------
 def initialize_firebase():
     if not firebase_admin._apps:
-        try:
-            cred = credentials.Certificate('/tmp/firebase_service_account.json')
-            firebase_admin.initialize_app(cred, {
-                'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-            })
-            print("[DEBUG] Firebase initialized successfully.")
-        except Exception as e:
-            print(f"[ERROR] Failed to initialize Firebase: {e}")
+        print("[DEBUG] Initializing Firebase...")
+        cred = credentials.Certificate('/tmp/firebase_service_account.json')
+        firebase_admin.initialize_app(cred, {
+            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+        })
+        print("[DEBUG] Firebase initialized successfully.")
     else:
         print("[DEBUG] Firebase already initialized.")
 
 def initialize_gspread():
-    try:
-        scope = ["https://spreadsheets.google.com/feeds", 
-                 "https://www.googleapis.com/auth/drive"]
-        creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
-        gclient = gspread.authorize(creds)
-        print("[DEBUG] Google Sheets API authorized successfully.")
-        return gclient
-    except Exception as e:
-        print(f"[ERROR] Failed to authorize Google Sheets API: {e}")
-        return None
+    print("[DEBUG] Authorizing Google Sheets API...")
+    scope = ["https://spreadsheets.google.com/feeds", 
+             "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
+    gclient = gspread.authorize(creds)
+    print("[DEBUG] Google Sheets API authorized successfully.")
+    return gclient
 
 # ---------------------
 # Firebaseアクセス関連
 # ---------------------
 def get_data_from_firebase(path):
     print(f"[DEBUG] Fetching data from Firebase path: {path}")
-    try:
-        ref = db.reference(path)
-        data = ref.get()
-        if data is None:
-            print(f"[DEBUG] No data found at path: {path}")
-        else:
-            print(f"[DEBUG] Data fetched successfully from path: {path}")
-        return data
-    except Exception as e:
-        print(f"[ERROR] Error fetching data from Firebase path {path}: {e}")
-        return None
+    ref = db.reference(path)
+    data = ref.get()
+    if data is None:
+        print(f"[DEBUG] No data found at path: {path}")
+    else:
+        print(f"[DEBUG] Data fetched successfully from path: {path}")
+    return data
 
 # ---------------------
 # メイン処理
 # ---------------------
-def process_attendance_and_write_sheet():
+def process_attendance_and_write_sheet(gclient):
     print("[INFO] Starting attendance processing...")
     
     # Firebaseからデータを取得
@@ -60,17 +51,23 @@ def process_attendance_and_write_sheet():
     attendance_data = get_data_from_firebase("Students/attendance/student_id")
     student_info_data = get_data_from_firebase("Students/student_info")
     
-    print(f"[DEBUG] Courses data fetched: {len(courses_data) if courses_data else 0} entries.")
-    print(f"[DEBUG] Attendance data fetched: {len(attendance_data) if attendance_data else 0} entries.")
-    print(f"[DEBUG] Student info data fetched: {len(student_info_data) if student_info_data else 0} entries.")
+    if courses_data:
+        print(f"[DEBUG] Courses data fetched: {len(courses_data)} entries.")
+    else:
+        print("[DEBUG] No courses data fetched.")
+    
+    if attendance_data:
+        print(f"[DEBUG] Attendance data fetched: {len(attendance_data)} entries.")
+    else:
+        print("[DEBUG] No attendance data fetched.")
+    
+    if student_info_data:
+        print(f"[DEBUG] Student info data fetched: {len(student_info_data)} entries.")
+    else:
+        print("[DEBUG] No student info data fetched.")
     
     if not courses_data or not attendance_data or not student_info_data:
         print("[ERROR] 必要なデータが不足しています。処理を中断します。")
-        return
-    
-    gclient = initialize_gspread()
-    if not gclient:
-        print("[ERROR] Google Sheetsクライアントの初期化に失敗しました。処理を中断します。")
         return
     
     for course_id, course_info in courses_data.items():
@@ -90,31 +87,24 @@ def process_attendance_and_write_sheet():
             print(f"[WARNING] course_sheet_idが無効です。course_id: {course_id} をスキップします。")
             continue
         
-        try:
-            sheet = gclient.open_by_key(course_sheet_id)
-            print(f"[DEBUG] Opened Google Sheet with ID: {course_sheet_id}")
-        except gspread.exceptions.SpreadsheetNotFound:
-            print(f"[ERROR] シートが見つかりません: {course_sheet_id}")
-            continue
-        except Exception as e:
-            print(f"[ERROR] Google Sheetを開く際にエラーが発生しました: {e}")
-            continue
+        print(f"[DEBUG] Opening Google Sheet with ID: {course_sheet_id}")
+        sheet = gclient.open_by_key(course_sheet_id)
+        print(f"[DEBUG] Opened Google Sheet with ID: {course_sheet_id}")
         
         sheet_name = datetime.datetime.now().strftime("%Y-%m")
-        try:
-            worksheet = sheet.worksheet(sheet_name)
+        print(f"[DEBUG] Looking for worksheet: {sheet_name}")
+        
+        # シート名が存在するか確認
+        worksheet_titles = [ws.title for ws in sheet.worksheets()]
+        print(f"[DEBUG] Existing worksheets: {worksheet_titles}")
+        
+        if sheet_name in worksheet_titles:
             print(f"[DEBUG] Found existing worksheet: {sheet_name}")
-        except gspread.exceptions.WorksheetNotFound:
+            worksheet = sheet.worksheet(sheet_name)
+        else:
             print(f"[DEBUG] Worksheet '{sheet_name}' が見つかりません。新規作成します。")
-            try:
-                worksheet = sheet.add_worksheet(title=sheet_name, rows=100, cols=31)
-                print(f"[DEBUG] Worksheet '{sheet_name}' を新規作成しました。")
-            except Exception as e:
-                print(f"[ERROR] Worksheet '{sheet_name}' の作成に失敗しました: {e}")
-                continue
-        except Exception as e:
-            print(f"[ERROR] Worksheet '{sheet_name}' の取得中にエラーが発生しました: {e}")
-            continue
+            worksheet = sheet.add_worksheet(title=sheet_name, rows=100, cols=31)
+            print(f"[DEBUG] Worksheet '{sheet_name}' を新規作成しました。")
         
         student_row_map = {}
         row_counter = 2  # Row 1 is header
@@ -161,13 +151,9 @@ def process_attendance_and_write_sheet():
             
             for idx, (date_str, decision) in enumerate(decision_data.items(), start=1):
                 print(f"[DEBUG] Processing decision {idx}/{total_decisions} for date: {date_str}")
-                try:
-                    # 日付文字列を直接解析して日付オブジェクトを取得
-                    entry_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-                    print(f"[DEBUG] Parsed date_str '{date_str}' to date object: {entry_date}")
-                except ValueError:
-                    print(f"[ERROR] Invalid date format in decision data: {date_str}. Skipping this entry.")
-                    continue
+                # 日付文字列を直接解析して日付オブジェクトを取得
+                entry_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                print(f"[DEBUG] Parsed date_str '{date_str}' to date object: {entry_date}")
                 
                 # シートの列を日付に基づいて計算（1列目を日付1日に対応）
                 col = entry_date.day + 1
@@ -176,23 +162,19 @@ def process_attendance_and_write_sheet():
                 
                 print(f"[DEBUG] Preparing to write status '{status}' to sheet at row {row}, column {col} (Date: {entry_date})")
                 
-                try:
-                    current_value = worksheet.cell(row, col).value
-                    print(f"[DEBUG] Current value at row {row}, column {col}: '{current_value}'")
-                    if current_value != status:
-                        worksheet.update_cell(row, col, status)
-                        print(f"[INFO] Updated cell at row {row}, column {col} with status '{status}'.")
-                    else:
-                        print(f"[DEBUG] Status '{status}' already present at row {row}, column {col}. No update needed.")
-                except Exception as e:
-                    print(f"[ERROR] Failed to write to sheet at row {row}, column {col}. Error: {e}")
+                current_value = worksheet.cell(row, col).value
+                print(f"[DEBUG] Current value at row {row}, column {col}: '{current_value}'")
+                if current_value != status:
+                    worksheet.update_cell(row, col, status)
+                    print(f"[INFO] Updated cell at row {row}, column {col} with status '{status}'.")
+                else:
+                    print(f"[DEBUG] Status '{status}' already present at row {row}, column {col}. No update needed.")
             
             processed_students += 1
             print(f"[DEBUG] Completed processing for student_id: {student_id} ({processed_students}/{total_students})")
     
     if __name__ == "__main__":
-        try:
-            initialize_firebase()
-            process_attendance_and_write_sheet()
-        except Exception as e:
-            print(f"[CRITICAL] An unexpected error occurred: {e}")
+        initialize_firebase()
+        gclient = initialize_gspread()
+        process_attendance_and_write_sheet(gclient)
+        print("[INFO] 処理が完了しました。")
