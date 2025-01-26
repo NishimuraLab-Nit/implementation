@@ -131,19 +131,26 @@ def main():
                 column = map_day_to_column(current_day)
                 print(f"Mapped day '{current_day}' to column {column}.")
 
-                # 行を決定
-                # 学生リストの順序に基づいて行を決定する必要があります。
-                # ここでは、Google SheetのA列にstudent_idxが存在することを前提とします。
-                cell = sheet.find(student_idx)
-                if not cell:
+                # デバッグ用：シート内の全student_indicesを取得
+                print("Fetching all student indices from the sheet for debugging...")
+                all_values = sheet.col_values(1)  # 例としてA列をstudent_indexとして取得
+                print(f"All student indices in the sheet (Column A): {all_values}")
+
+                # 学生インデックスを検索（大文字・小文字を無視）
+                student_row = None
+                for row_num, cell_value in enumerate(all_values, start=1):
+                    if cell_value.strip().upper() == student_idx.upper():
+                        student_row = row_num
+                        break
+
+                if not student_row:
                     print(f"Student index {student_idx} not found in the sheet.")
                     continue
-                row = cell.row
-                print(f"Student index {student_idx} found at row {row}.")
+                print(f"Student index {student_idx} found at row {student_row}.")
 
                 # セルにdecisionを入力
-                sheet.update_cell(row, column, decision)
-                print(f"Updated cell at row {row}, column {column} with decision '{decision}'.")
+                sheet.update_cell(student_row, column, decision)
+                print(f"Updated cell at row {student_row}, column {column} with decision '{decision}'.")
 
             except Exception as e:
                 print(f"Error updating Google Sheet for course {course_id}, student {student_idx}: {e}")
