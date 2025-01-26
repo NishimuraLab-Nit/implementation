@@ -36,17 +36,21 @@ def get_data_from_firebase(path):
 # ---------------------
 # ヘルパー関数
 # ---------------------
-def get_current_date():
-    # 現在の日付を取得（例: 26）
+def get_current_day_of_week():
+    # 現在の曜日を取得（例: "Sunday"）
+    return datetime.datetime.now().strftime('%A')
+
+def get_current_day_of_month():
+    # 現在の日付を取得（数値）
     return datetime.datetime.now().day
 
 def get_current_sheet_name():
     # 現在の年月を取得して "YYYY-MM" 形式のシート名を生成
     return datetime.datetime.now().strftime('%Y-%m')
 
-def map_date_to_column(date):
-    # 日付を列番号にマッピング（例: 1 -> 2, 26 -> 27）
-    return date + 1
+def map_date_to_column(day_of_month):
+    # 日付を列番号にマッピング（例: 1日 -> 3, 2日 -> 4, ..., 31日 -> 33）
+    return day_of_month + 2
 
 def get_student_indices(student_indices_str):
     # "E523, E534" のような文字列をリストに変換
@@ -56,9 +60,11 @@ def get_student_indices(student_indices_str):
 # メイン処理
 # ---------------------
 def main():
-    current_date = get_current_date()
+    current_day_of_week = get_current_day_of_week()
+    current_day_of_month = get_current_day_of_month()
     current_sheet_name = get_current_sheet_name()
-    print(f"Current date: {current_date}")
+    print(f"Current day of week: {current_day_of_week}")
+    print(f"Current day of month: {current_day_of_month}")
     print(f"Current sheet name: {current_sheet_name}")
 
     # 1. Courses一覧を取得
@@ -67,7 +73,7 @@ def main():
         print("No courses found.")
         return
 
-    # 2. 現在の日付と一致するコースをフィルタリング
+    # 2. 現在の曜日と一致するコースをフィルタリング
     matched_courses = []
     for idx, course_info in enumerate(courses_data):
         course_id = idx  # リストのインデックスが course_id
@@ -77,27 +83,12 @@ def main():
             print(f"Course data at index {course_id} is None.")
             continue
         schedule_day = course_info.get('schedule', {}).get('day')
-        # ここでは曜日が現在の日付に基づくものではなく、日付に基づくものに変更する必要があります
-        # しかし、スケジュール情報がまだ曜日ベースの場合は、スケジュールの更新が必要です
-        # ここでは、スケジュールのdayが曜日であることを前提としていますが、
-        # 日付ベースのスケジュールに変更する場合は、データ構造を調整する必要があります
-        # ここでは、単純に現在の日付に基づくフィルタリングを行います
-        # 具体的な要件が不明なため、フィルタリングをスキップします
-        # matched_courses.append((course_id, course_info))
-        # print(f"Course {course_id} matches the current date.")
-        # もしスケジュールが日付ベースならば、以下のようにフィルタリング
-        # schedule_date = course_info.get('schedule', {}).get('date')
-        # if schedule_date == current_date:
-        #     matched_courses.append((course_id, course_info))
-        #     print(f"Course {course_id} matches the current date.")
-        
-        # ここではスケジュールフィルタリングをそのままにしておく
-        # 必要に応じて日付ベースのフィルタリングを実装してください
-        matched_courses.append((course_id, course_info))
-        print(f"Course {course_id} is being processed.")
+        if schedule_day == current_day_of_week:
+            matched_courses.append((course_id, course_info))
+            print(f"Course {course_id} matches the current day.")
 
     if not matched_courses:
-        print("No courses match the current date.")
+        print("No courses match the current day.")
         return
 
     # 3. 各マッチしたコースに対して処理
@@ -158,9 +149,9 @@ def main():
                     print(f"Worksheet named '{current_sheet_name}' not found in spreadsheet {sheet_id}.")
                     continue
 
-                # 列を決定
-                column = map_date_to_column(current_date)
-                print(f"Mapped date '{current_date}' to column {column}.")
+                # 列を決定（現在の日付 + 2）
+                column = map_date_to_column(current_day_of_month)
+                print(f"Mapped date '{current_day_of_month}' to column {column}.")
 
                 # デバッグ用：シート内の全student_indicesを取得
                 print("Fetching all student indices from the sheet for debugging...")
