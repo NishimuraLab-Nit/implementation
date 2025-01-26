@@ -424,7 +424,7 @@ def process_attendance_and_write_sheet():
                 ws = sh.add_worksheet(title=yyyymm, rows=50, cols=50)
 
             # row, colをどう扱うかはご利用のスプレッドシート構造に合わせて調整
-            row = new_course_idx + 1
+            row = cid_int + 1
             col = day + 1
             print(f"[DEBUG] シート[{yyyymm}] (row={row}, col={col}) に '{status_val}' を書き込みます。")
             ws.update_cell(row, col, status_val)
