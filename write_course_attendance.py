@@ -125,7 +125,18 @@ def main():
 
             try:
                 # 9. Google Sheetを開く
-                sheet = gclient.open_by_key(sheet_id).sheet1  # シート名が1つの場合はsheet1
+                sh = gclient.open_by_key(sheet_id)
+                print(f"Opened Google Sheet: {sh.title}")
+                
+                # シートの名前を一覧表示
+                worksheets = sh.worksheets()
+                print("Available worksheets:")
+                for ws in worksheets:
+                    print(f"- {ws.title}")
+                
+                # 必要に応じてシート名を指定（ここでは最初のシートを使用）
+                sheet = sh.sheet1  # 必要に応じてシート名を変更
+                print(f"Using worksheet: {sheet.title}")
 
                 # 列を決定
                 column = map_day_to_column(current_day)
@@ -152,6 +163,10 @@ def main():
                 sheet.update_cell(student_row, column, decision)
                 print(f"Updated cell at row {student_row}, column {column} with decision '{decision}'.")
 
+            except gspread.exceptions.SpreadsheetNotFound:
+                print(f"Spreadsheet with ID {sheet_id} not found.")
+            except gspread.exceptions.WorksheetNotFound:
+                print(f"Worksheet not found in spreadsheet {sheet_id}.")
             except Exception as e:
                 print(f"Error updating Google Sheet for course {course_id}, student {student_idx}: {e}")
 
