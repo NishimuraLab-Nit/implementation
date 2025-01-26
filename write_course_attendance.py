@@ -68,9 +68,13 @@ def main():
 
     # 2. 現在の曜日と一致するコースをフィルタリング
     matched_courses = []
-    for course_id, course_info in courses_data.items():
-        if course_id is None:
+    for idx, course_info in enumerate(courses_data):
+        course_id = idx  # リストのインデックスが course_id
+        if course_id == 0:
             continue  # インデックス0は無視
+        if not course_info:
+            print(f"Course data at index {course_id} is None.")
+            continue
         schedule_day = course_info.get('schedule', {}).get('day')
         if schedule_day == current_day:
             matched_courses.append((course_id, course_info))
@@ -129,11 +133,7 @@ def main():
 
                 # 行を決定
                 # 学生リストの順序に基づいて行を決定する必要があります。
-                # ここでは、Google Sheetの1行目がヘッダーと仮定し、2行目以降に学生が配置されていると仮定します。
-                # 学生の行番号を特定するために、学生名や番号で検索する必要がある場合があります。
-                # ここでは、student_idxをシートのA列に検索して対応する行を取得します。
-
-                # A列にstudent_idxがあると仮定
+                # ここでは、Google SheetのA列にstudent_idxが存在することを前提とします。
                 cell = sheet.find(student_idx)
                 if not cell:
                     print(f"Student index {student_idx} not found in the sheet.")
