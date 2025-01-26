@@ -140,7 +140,7 @@ def main():
                     continue
 
                 # 列を決定
-                column = map_date_to_column(current_day_of_month) + 1
+                column = map_date_to_column(current_day_of_month) 
                 print(f"Mapped day of month '{current_day_of_month}' to column {column}.")
 
                 # デバッグ用：シート内の全student_indicesを取得
