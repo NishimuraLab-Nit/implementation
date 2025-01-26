@@ -208,7 +208,9 @@ def process_attendance_and_write_sheet():
         return
 
     # 出席判定結果をシートにまとめるための一時的な辞書
-    # {(student_index, new_course_idx, date_str): status}
+    # ※ 仕様変更に伴い、(student_index, new_course_idx, date_str) に加え cid_int もキーに含める
+    #    ことで、後段で course_id のインデックスを参照できるようにします。
+    # {(student_index, new_course_idx, date_str, cid_int): status}
     results_dict = {}
 
     print("[DEBUG] === 学生ごとのループを開始します。===")
@@ -242,7 +244,7 @@ def process_attendance_and_write_sheet():
         print(f"[DEBUG] student_index={student_index} が履修しているコース: {enrolled_course_ids}")
 
         # -----------------
-        # 当日の曜日に合致するコースを抽出し、periodでソートする（ここが修正ポイント）
+        # 当日の曜日に合致するコースを抽出し、periodでソート
         # -----------------
         valid_course_list = []
         for cid_str in enrolled_course_ids:
@@ -266,12 +268,10 @@ def process_attendance_and_write_sheet():
             period_in_course = sched.get("period", 0)
 
             if day_in_course == current_weekday_str:
-                # コースIDとともに period も持っておく
                 valid_course_list.append((period_in_course, cid_int))
 
-        # ★★ ここで period (period_in_course) をキーに昇順ソートする ★★
+        # periodをキーに昇順ソート
         valid_course_list.sort(key=lambda x: x[0])
-
         print(f"[DEBUG] => 曜日({current_weekday_str})が一致する(ソート後)コース: {valid_course_list}")
 
         # entry/exit の日付取得
@@ -292,7 +292,7 @@ def process_attendance_and_write_sheet():
         print(f"[DEBUG] => student_id={student_id} / 基準日: {date_str}")
 
         # -----------------
-        # period昇順で処理する
+        # period昇順で処理
         # -----------------
         for new_course_idx, (period_in_course, cid_int) in enumerate(valid_course_list, start=1):
             course_info = courses_all[cid_int]
@@ -301,7 +301,6 @@ def process_attendance_and_write_sheet():
                 print(f"[DEBUG] course_id={cid_int} の period={period_in_course} は1~4ではないのでスキップ。")
                 continue
 
-            # 対象の entry/exit を取得
             ekey = f"entry{period_in_course}"
             xkey = f"exit{period_in_course}"
             print(f"[DEBUG] 判定対象: course_id={cid_int}, period={period_in_course} -> ekey={ekey}, xkey={xkey}")
@@ -312,7 +311,9 @@ def process_attendance_and_write_sheet():
                 status = "×"
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
                 set_data_in_firebase(decision_path, status)
-                results_dict[(student_index, new_course_idx, date_str)] = status
+
+                # ここで results_dict に cid_int も含めて保存
+                results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
                 continue
 
             entry_info = att_dict.get(ekey, {})
@@ -338,14 +339,12 @@ def process_attendance_and_write_sheet():
 
             # 変更がある場合は Firebase を更新
             updates = {}
-            # entry
             if new_entry_dt and (new_entry_dt != entry_dt):
                 updates[ekey] = {
                     "read_datetime": new_entry_dt.strftime("%Y-%m-%d %H:%M:%S"),
                     "serial_number": entry_info.get("serial_number", "")
                 }
                 att_dict[ekey] = updates[ekey]
-            # exit
             if new_exit_dt and exit_dt and (new_exit_dt != exit_dt):
                 updates[xkey] = {
                     "read_datetime": new_exit_dt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -387,8 +386,8 @@ def process_attendance_and_write_sheet():
             decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
             set_data_in_firebase(decision_path, status)
 
-            # シート書き込み用
-            results_dict[(student_index, new_course_idx, date_str)] = status
+            # シート書き込み用に (student_index, new_course_idx, date_str, cid_int) をキーに保存
+            results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
 
     print("[DEBUG] === シート書き込み処理を開始します。===")
     all_student_index_data = student_info_data.get("student_index", {})
@@ -405,17 +404,30 @@ def process_attendance_and_write_sheet():
             continue
 
         # 該当student_indexの出席判定結果だけを抽出
+        # (key は (s_idx, new_course_idx, date_str, cid_int))
         std_result_items = {
             k: v for k, v in results_dict.items() if k[0] == std_idx
         }
         if not std_result_items:
-            print(f"[DEBUG] student_index={std_idx} に該当する出席判定結果がありません。スキップ。")
+            print(f"[DEBUG] student_index={std_idx} に該当する出席判定結果がありません。スキップします。")
             continue
 
+        # enrolled_course_ids を取得しておく
+        enroll_info = enrollment_data_all.get(std_idx)
+        if not enroll_info or "course_id" not in enroll_info:
+            print(f"[DEBUG] student_index={std_idx} の enrollment_data がありません。スキップします。")
+            continue
+        enrolled_course_str = enroll_info["course_id"]
+        enrolled_course_ids = [
+            c.strip() for c in enrolled_course_str.split(",") if c.strip()
+        ]
+
         print(f"[DEBUG] -> student_index={std_idx} への書き込み対象: {std_result_items}")
-        for (s_idx, new_course_idx, date_str), status_val in std_result_items.items():
+        for (s_idx, new_course_idx, date_str, cid_int), status_val in std_result_items.items():
             yyyymm = date_str[:7]  # "YYYY-MM"
             day = int(date_str[8:10])  # "dd"
+
+            # ワークシートを開く（無ければ新規作成）
             try:
                 ws = sh.worksheet(yyyymm)
                 print(f"[DEBUG] 既存のワークシート {yyyymm} を取得しました。")
@@ -423,9 +435,22 @@ def process_attendance_and_write_sheet():
                 print(f"[DEBUG] ワークシート {yyyymm} が見つからないため、新規作成します。")
                 ws = sh.add_worksheet(title=yyyymm, rows=50, cols=50)
 
-            # row, colをどう扱うかはご利用のスプレッドシート構造に合わせて調整
-            row = new_course_idx + 1
-            col = day + 1
+            # ==== ここが今回の仕様変更ポイント ====
+            # 列(col) = (course_id が enrolled_course_ids にある"順番") + 1
+            # つまり、cid_int → 文字列にしてリスト中のインデックスを取得
+            cid_str = str(cid_int)
+            try:
+                course_pos = enrolled_course_ids.index(cid_str)  # 0-based
+            except ValueError:
+                # 万一見つからなければスキップ
+                print(f"[DEBUG] cid_str={cid_str} が enrolled_course_ids に見つからないためスキップします。")
+                continue
+            col = course_pos + 1
+
+            # row は「日付(day) + 1」にしておく(元コードは new_course_idx + 1 だった場合は適宜修正)
+            # 今回は「列をコース順、行を日付」にしたい想定であれば以下のようにする:
+            row = day + 1
+
             print(f"[DEBUG] シート[{yyyymm}] (row={row}, col={col}) に '{status_val}' を書き込みます。")
             ws.update_cell(row, col, status_val)
 
