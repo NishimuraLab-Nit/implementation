@@ -36,20 +36,15 @@ def get_data_from_firebase(path):
 # ---------------------
 # ヘルパー関数
 # ---------------------
-def get_current_day_of_week():
-    # 現在の曜日を取得（例: "Sunday"）
-    return datetime.datetime.now().strftime('%A')
-
-def get_current_day_of_month():
-    # 現在の日付を取得（数値）
-    return datetime.datetime.now().day
-
-def get_current_sheet_name():
-    # 現在の年月を取得して "YYYY-MM" 形式のシート名を生成
-    return datetime.datetime.now().strftime('%Y-%m')
+def get_current_date_details():
+    now = datetime.datetime.now()
+    current_day = now.strftime('%A')          # 曜日 (例: "Sunday")
+    current_sheet_name = now.strftime('%Y-%m') # シート名 (例: "2025-01")
+    current_day_of_month = now.day            # 日付 (数値, 例: 26)
+    return current_day, current_sheet_name, current_day_of_month
 
 def map_date_to_column(day_of_month):
-    # 日付を列番号にマッピング（例: 1日 -> 3, 2日 -> 4, ..., 31日 -> 33）
+    # 日付を列番号にマッピング (例: 1 -> 3, 26 -> 28)
     return day_of_month + 2
 
 def get_student_indices(student_indices_str):
@@ -60,12 +55,10 @@ def get_student_indices(student_indices_str):
 # メイン処理
 # ---------------------
 def main():
-    current_day_of_week = get_current_day_of_week()
-    current_day_of_month = get_current_day_of_month()
-    current_sheet_name = get_current_sheet_name()
-    print(f"Current day of week: {current_day_of_week}")
-    print(f"Current day of month: {current_day_of_month}")
+    current_day, current_sheet_name, current_day_of_month = get_current_date_details()
+    print(f"Current day: {current_day}")
     print(f"Current sheet name: {current_sheet_name}")
+    print(f"Current day of month: {current_day_of_month}")
 
     # 1. Courses一覧を取得
     courses_data = get_data_from_firebase('Courses/course_id')
@@ -83,7 +76,7 @@ def main():
             print(f"Course data at index {course_id} is None.")
             continue
         schedule_day = course_info.get('schedule', {}).get('day')
-        if schedule_day == current_day_of_week:
+        if schedule_day == current_day:
             matched_courses.append((course_id, course_info))
             print(f"Course {course_id} matches the current day.")
 
@@ -93,7 +86,7 @@ def main():
 
     # 3. 各マッチしたコースに対して処理
     for course_id, course_info in matched_courses:
-        print(f"Processing Course ID: {course_id}, Course Name: {course_info.get('course_name')}")
+        print(f"\nProcessing Course ID: {course_id}, Course Name: {course_info.get('course_name')}")
 
         # 4. Enrollmentからstudent_indicesを取得
         enrollment_path = f"Students/enrollment/course_id/{course_id}/student_index"
@@ -106,14 +99,17 @@ def main():
         print(f"Student indices for course {course_id}: {student_indices}")
 
         # 5. 各student_indexに対して処理
-        for student_idx in student_indices:
+        for idx, student_idx in enumerate(student_indices, start=1):
+            row_number = idx + 1  # ヘッダーが1行目にある場合、最初の学生は2行目
+            print(f"\nProcessing Student {student_idx} (List Index: {idx}, Sheet Row: {row_number})")
+
             # 6. student_idを取得
             student_info_path = f"Students/student_info/student_index/{student_idx}/student_id"
             student_id = get_data_from_firebase(student_info_path)
             if not student_id:
                 print(f"No student_id found for student_index {student_idx}.")
                 continue
-            print(f"Student Index: {student_idx}, Student ID: {student_id}")
+            print(f"Student ID: {student_id}")
 
             # 7. attendanceからdecisionを取得
             decision_path = f"Students/attendance/student_id/{student_id}/course_id/{course_id}/decision"
@@ -121,7 +117,7 @@ def main():
             if decision is None:
                 print(f"No decision found for student_id {student_id} in course {course_id}.")
                 continue
-            print(f"Decision for student {student_id} in course {course_id}: {decision}")
+            print(f"Decision: {decision}")
 
             # 8. course_sheet_idを取得
             sheet_id = course_info.get('course_sheet_id')
@@ -135,13 +131,7 @@ def main():
                 sh = gclient.open_by_key(sheet_id)
                 print(f"Opened Google Sheet: {sh.title}")
 
-                # シートの名前を一覧表示
-                worksheets = sh.worksheets()
-                print("Available worksheets:")
-                for ws in worksheets:
-                    print(f"- {ws.title}")
-
-                # シート名を動的に指定（例: "2025-01"）
+                # シート名を動的に指定 (例: "2025-01")
                 try:
                     sheet = sh.worksheet(current_sheet_name)
                     print(f"Using worksheet: {sheet.title}")
@@ -149,34 +139,18 @@ def main():
                     print(f"Worksheet named '{current_sheet_name}' not found in spreadsheet {sheet_id}.")
                     continue
 
-                # 列を決定（現在の日付 + 2）
+                # 列を決定
                 column = map_date_to_column(current_day_of_month)
-                print(f"Mapped date '{current_day_of_month}' to column {column}.")
+                print(f"Mapped day of month '{current_day_of_month}' to column {column}.")
 
                 # デバッグ用：シート内の全student_indicesを取得
-                print("Fetching all student indices from the sheet for debugging...")
-                all_values = sheet.col_values(1)  # 例としてA列をstudent_indexとして取得
-                print(f"All student indices in the sheet (Column A): {all_values}")
-
-                if not all_values:
-                    print("No data found in Column A of the sheet.")
-                    continue
-
-                # 学生インデックスを検索（大文字・小文字を無視）
-                student_row = None
-                for row_num, cell_value in enumerate(all_values, start=1):
-                    if cell_value.strip().upper() == student_idx.upper():
-                        student_row = row_num
-                        break
-
-                if not student_row:
-                    print(f"Student index {student_idx} not found in the sheet.")
-                    continue
-                print(f"Student index {student_idx} found at row {student_row}.")
+                # ここでは使用しませんが、必要に応じて残しておきます。
+                # all_values = sheet.col_values(1)  # A列をstudent_indexとして取得
+                # print(f"All student indices in the sheet (Column A): {all_values}")
 
                 # セルにdecisionを入力
-                sheet.update_cell(student_row, column, decision)
-                print(f"Updated cell at row {student_row}, column {column} with decision '{decision}'.")
+                sheet.update_cell(row_number, column, decision)
+                print(f"Updated cell at row {row_number}, column {column} with decision '{decision}'.")
 
             except gspread.exceptions.SpreadsheetNotFound:
                 print(f"Spreadsheet with ID {sheet_id} not found.")
