@@ -7,244 +7,173 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ---------------------
 # Firebase & GSpread初期化
 # ---------------------
-def initialize_firebase():
-    if not firebase_admin._apps:
-        print("[DEBUG] Initializing Firebase...")
-        cred_path = '/tmp/firebase_service_account.json'
-        print(f"[DEBUG] Using Firebase credentials from: {cred_path}")
-        cred = credentials.Certificate(cred_path)
-        firebase_admin.initialize_app(cred, {
-            'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
-        })
-        print("[DEBUG] Firebase initialized successfully.")
-    else:
-        print("[DEBUG] Firebase already initialized.")
+if not firebase_admin._apps:
+    # Firebaseの認証情報を読み込む
+    cred = credentials.Certificate('/tmp/firebase_service_account.json')
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+    })
+    print("Firebaseが初期化されました。")
 
-def initialize_gspread():
-    print("[DEBUG] Authorizing Google Sheets API...")
-    scope = ["https://spreadsheets.google.com/feeds", 
-             "https://www.googleapis.com/auth/drive"]
-    creds_path = '/tmp/gcp_service_account.json'
-    print(f"[DEBUG] Using GSpread credentials from: {creds_path}")
-    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
-    gclient = gspread.authorize(creds)
-    print("[DEBUG] Google Sheets API authorized successfully.")
-    return gclient
+# GSpreadの認証設定
+scope = ["https://spreadsheets.google.com/feeds", 
+         "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
+gclient = gspread.authorize(creds)
+print("Google Sheets APIが認証されました。")
 
 # ---------------------
 # Firebaseアクセス関連
 # ---------------------
 def get_data_from_firebase(path):
-    print(f"[DEBUG] Fetching data from Firebase path: {path}")
+    """
+    指定されたFirebaseのパスからデータを取得します。
+    """
+    print(f"Firebaseパスからデータを取得中: {path}")
     ref = db.reference(path)
     data = ref.get()
     if data is None:
-        print(f"[DEBUG] No data found at path: {path}")
-    else:
-        print(f"[DEBUG] Data fetched successfully from path: {path}")
+        print(f"パス {path} にデータが存在しません。")
     return data
 
 # ---------------------
-# データ検証ユーティリティ
+# Google Sheetsの日付行取得関連
 # ---------------------
-def validate_course_info(course_info, course_id):
-    if not isinstance(course_info, dict):
-        print(f"[ERROR] course_info for course_id {course_id} is not a dictionary.")
-        return False
-    required_keys = ["course_sheet_id", "schedule"]
-    for key in required_keys:
-        if key not in course_info:
-            print(f"[ERROR] Missing key '{key}' in course_info for course_id {course_id}.")
-            return False
-    schedule = course_info.get("schedule")
-    if not isinstance(schedule, dict):
-        print(f"[ERROR] 'schedule' for course_id {course_id} is not a dictionary.")
-        return False
-    if "day" not in schedule or "time" not in schedule:
-        print(f"[ERROR] 'schedule' missing 'day' or 'time' for course_id {course_id}.")
-        return False
-    return True
+def get_or_create_date_row(sheet, current_date):
+    """
+    シート内で現在の日付に対応する行を取得します。
+    存在しない場合は新しい行を追加します。
+    日付はシートの1列目にあると仮定します。
+    """
+    print(f"シート内で日付 {current_date} の行を検索中...")
+    try:
+        cell = sheet.find(current_date)
+        row = cell.row
+        print(f"日付 {current_date} は既に行 {row} に存在します。")
+    except gspread.exceptions.CellNotFound:
+        # 日付が見つからない場合は新しい行を追加
+        row = len(sheet.get_all_values()) + 1
+        sheet.update_cell(row, 1, current_date)
+        print(f"日付 {current_date} を新たに行 {row} に追加しました。")
+    return row
 
-def validate_student_info(student_info, student_id):
-    if not isinstance(student_info, dict):
-        print(f"[ERROR] student_info for student_id {student_id} is not a dictionary.")
-        return False
-    if "student_index" not in student_info:
-        print(f"[ERROR] Missing 'student_index' in student_info for student_id {student_id}.")
-        return False
-    return True
-
-def validate_enrollment_data(enrollment_data, student_id):
-    if not isinstance(enrollment_data, dict):
-        print(f"[ERROR] enrollment_data for student_id {student_id} is not a dictionary.")
-        return False
-    if "course_id" not in enrollment_data:
-        print(f"[ERROR] Missing 'course_id' in enrollment_data for student_id {student_id}.")
-        return False
-    return True
-
-def validate_decision_data(decision_data, student_id, course_id):
-    if not isinstance(decision_data, dict):
-        print(f"[ERROR] decision_data for student_id {student_id}, course_id {course_id} is not a dictionary.")
-        return False
-    for date_str, decision in decision_data.items():
+# ---------------------
+# Google Sheetsの学生列取得関連
+# ---------------------
+def get_student_columns(sheet, student_ids):
+    """
+    シート内で各学生IDに対応する列番号を取得します。
+    存在しない場合は新しい列を追加します。
+    学生IDはシートの1行目にあると仮定します。
+    """
+    print("シート内で学生IDに対応する列を検索中...")
+    header = sheet.row_values(1)
+    student_columns = {}
+    for student_id in student_ids:
         try:
-            datetime.datetime.strptime(date_str, "%Y-%m-%d")
-        except ValueError:
-            print(f"[ERROR] Invalid date format '{date_str}' in decision_data for student_id {student_id}, course_id {course_id}. Expected YYYY-MM-DD.")
-            return False
-    return True
+            cell = sheet.find(student_id)
+            column = cell.col
+            print(f"学生ID {student_id} は列 {column} に存在します。")
+        except gspread.exceptions.CellNotFound:
+            # 学生IDが見つからない場合は新しい列を追加
+            column = len(header) + 1
+            sheet.update_cell(1, column, student_id)
+            print(f"学生ID {student_id} を新たに列 {column} に追加しました。")
+        student_columns[student_id] = column
+    return student_columns
 
 # ---------------------
 # メイン処理
 # ---------------------
-def process_attendance_and_write_sheet(gclient):
-    print("[INFO] Starting attendance processing...")
-    
-    # Firebaseからデータを取得
-    courses_data = get_data_from_firebase("Courses/course_id")
-    attendance_data = get_data_from_firebase("Students/attendance/student_id")
-    student_info_data = get_data_from_firebase("Students/student_info")
-    
-    if courses_data:
-        print(f"[DEBUG] Courses data fetched: {len(courses_data)} entries.")
-    else:
-        print("[DEBUG] No courses data fetched.")
-    
-    if attendance_data:
-        print(f"[DEBUG] Attendance data fetched: {len(attendance_data)} entries.")
-    else:
-        print("[DEBUG] No attendance data fetched.")
-    
-    if student_info_data:
-        print(f"[DEBUG] Student info data fetched: {len(student_info_data)} entries.")
-    else:
-        print("[DEBUG] No student info data fetched.")
-    
-    if not courses_data or not attendance_data or not student_info_data:
-        print("[ERROR] 必要なデータが不足しています。処理を中断します。")
+def main():
+    # 現在の日付を取得（例: '2025-01-26'）
+    current_date = datetime.datetime.now().strftime('%Y-%m-%d')
+    print(f"現在の日付: {current_date}")
+
+    # Courses一覧を取得
+    courses_path = "Courses"
+    courses = get_data_from_firebase(courses_path)
+    if not courses:
+        print("コースが見つかりません。処理を終了します。")
         return
-    
-    for course_id, course_info in courses_data.items():
-        print(f"[DEBUG] Processing course_id: {course_id}")
-        if not course_info:
-            print(f"[WARNING] course_infoが存在しません。course_id: {course_id} をスキップします。")
+
+    course_ids = list(courses.keys())
+    print(f"取得したコースID一覧: {course_ids}")
+
+    # 一致するコース（特定の日付に基づく）をフィルタリング
+    matching_course_ids = []
+    for course_id in course_ids:
+        schedule_day = get_data_from_firebase(f"Courses/{course_id}/schedule/day")
+        print(f"コース {course_id} のスケジュール日付: {schedule_day}")
+        if schedule_day == current_date:
+            matching_course_ids.append(course_id)
+
+    print(f"今日の日付に一致するコースID: {matching_course_ids}")
+
+    # 一致するコースごとに処理
+    for course_id in matching_course_ids:
+        # コースに登録されている学生のインデックスを取得
+        enrollment_path = f"Students/enrollment/course_id/{course_id}/student_index"
+        student_indices_str = get_data_from_firebase(enrollment_path)
+        if not student_indices_str:
+            print(f"コース {course_id} に登録されている学生がいません。次のコースへ進みます。")
             continue
-        
-        # データ検証
-        if not validate_course_info(course_info, course_id):
-            print(f"[ERROR] Invalid course_info for course_id: {course_id}. Skipping.")
+        # 学生インデックスをリストに変換（例: "a, b" -> ['a', 'b']）
+        student_indices = [idx.strip() for idx in student_indices_str.split(',')]
+        print(f"コース {course_id} の学生インデックス: {student_indices}")
+
+        # Students/student_info/student_index/{studnet_idx}/student_idを取得
+        student_ids = []
+        for student_idx in student_indices:
+            student_id = get_data_from_firebase(f"Students/student_info/student_index/{student_idx}/student_id")
+            if not student_id:
+                print(f"学生インデックス {student_idx} に対応するstudent_idが見つかりません。")
+                continue
+            student_ids.append(student_id)
+        if not student_ids:
+            print(f"コース {course_id} に有効な学生がいません。次のコースへ進みます。")
             continue
-        
-        course_sheet_id = course_info.get("course_sheet_id")
-        schedule = course_info.get("schedule", {})
-        day = schedule.get("day")
-        time_range = schedule.get("time")
-        
-        print(f"[DEBUG] Course ID: {course_id}, Sheet ID: {course_sheet_id}, Day: {day}, Time Range: {time_range}")
-        
-        if not course_sheet_id:
-            print(f"[WARNING] course_sheet_idが無効です。course_id: {course_id} をスキップします。")
+
+        # Courses/{course_id}/course_sheet_idからsheet_idを取得
+        sheet_id = get_data_from_firebase(f"Courses/{course_id}/course_sheet_id")
+        if not sheet_id:
+            print(f"コース {course_id} のsheet_idが見つかりません。次のコースへ進みます。")
             continue
-        
-        print(f"[DEBUG] Opening Google Sheet with ID: {course_sheet_id}")
-        sheet = gclient.open_by_key(course_sheet_id)
-        print(f"[DEBUG] Opened Google Sheet with ID: {course_sheet_id}")
-        
-        sheet_name = datetime.datetime.now().strftime("%Y-%m")
-        print(f"[DEBUG] Looking for worksheet: {sheet_name}")
-        
-        # シート名が存在するか確認
-        worksheet_titles = [ws.title for ws in sheet.worksheets()]
-        print(f"[DEBUG] Existing worksheets: {worksheet_titles}")
-        
-        if sheet_name in worksheet_titles:
-            print(f"[DEBUG] Found existing worksheet: {sheet_name}")
-            worksheet = sheet.worksheet(sheet_name)
-        else:
-            print(f"[DEBUG] Worksheet '{sheet_name}' が見つかりません。新規作成します。")
-            worksheet = sheet.add_worksheet(title=sheet_name, rows=100, cols=31)
-            print(f"[DEBUG] Worksheet '{sheet_name}' を新規作成しました。")
-        
-        student_row_map = {}
-        row_counter = 2  # Row 1 is header
-        total_students = len(attendance_data)
-        processed_students = 0
-        
-        print(f"[DEBUG] Starting to process {total_students} students for course_id: {course_id}")
-        
-        for student_id, student_attendance in attendance_data.items():
-            print(f"[DEBUG] Processing student_id: {student_id} ({processed_students + 1}/{total_students})")
-            
-            student_info = student_info_data.get(student_id, {})
-            if not validate_student_info(student_info, student_id):
-                print(f"[WARNING] Invalid student_info for student_id: {student_id}. Skipping.")
+
+        # Google Sheetsを開く
+        try:
+            sheet = gclient.open_by_key(sheet_id).sheet1  # 最初のシートを使用
+            print(f"シート {sheet_id} を開きました。")
+        except Exception as e:
+            print(f"シート {sheet_id} を開く際にエラーが発生しました: {e}")
+            continue
+
+        # 日付に対応する行を取得または作成
+        row = get_or_create_date_row(sheet, current_date)
+
+        # 学生IDに対応する列を取得または作成
+        student_columns = get_student_columns(sheet, student_ids)
+
+        # 各学生について処理
+        for student_idx, student_id in zip(student_indices, student_ids):
+            # Students/attendance/student_id/{student_id}/course_id/{course_id}/decisionを取得
+            decision = get_data_from_firebase(f"Students/attendance/student_id/{student_id}/course_id/{course_id}/decision")
+            if decision is None:
+                print(f"学生 {student_id} のコース {course_id} に対するdecisionが見つかりません。次の学生へ進みます。")
                 continue
-            student_index = student_info.get("student_index")
-            
-            enrollment_path = f"Students/enrollment/student_index/{student_index}"
-            enrollment_data = get_data_from_firebase(enrollment_path)
-            if not enrollment_data:
-                print(f"[WARNING] enrollment_dataが見つかりません。student_index: {student_index} をスキップします。")
-                continue
-            if not validate_enrollment_data(enrollment_data, student_id):
-                print(f"[WARNING] Invalid enrollment_data for student_id: {student_id}. Skipping.")
-                continue
-            
-            enrolled_courses = enrollment_data.get("course_id", "").split(",")
-            print(f"[DEBUG] Student {student_id} is enrolled in courses: {enrolled_courses}")
-            if str(course_id) not in enrolled_courses:
-                print(f"[DEBUG] Student {student_id} は course_id: {course_id} に登録されていません。スキップします。")
-                continue
-            
-            if student_index not in student_row_map:
-                student_row_map[student_index] = row_counter
-                print(f"[DEBUG] Assigned row {row_counter} to student_index: {student_index}")
-                row_counter += 1
-            
-            # 判定結果をFirebaseから取得
-            decision_path = f"Students/attendance/student_id/{student_id}/course_id/{course_id}/decision"
-            decision_data = get_data_from_firebase(decision_path)
-            if not decision_data:
-                print(f"[WARNING] Decision dataが見つかりません。student_id: {student_id}, course_id: {course_id} をスキップします。")
-                continue
-            if not validate_decision_data(decision_data, student_id, course_id):
-                print(f"[WARNING] Invalid decision_data for student_id: {student_id}, course_id: {course_id}. Skipping.")
-                continue
-            
-            total_decisions = len(decision_data)
-            print(f"[DEBUG] Found {total_decisions} decision entries for student_id: {student_id}, course_id: {course_id}")
-            
-            for idx, (date_str, decision) in enumerate(decision_data.items(), start=1):
-                print(f"[DEBUG] Processing decision {idx}/{total_decisions} for date: {date_str}")
-                # 日付文字列を直接解析して日付オブジェクトを取得
-                try:
-                    entry_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-                except ValueError:
-                    print(f"[ERROR] Invalid date format '{date_str}' for student_id: {student_id}, course_id: {course_id}. Skipping this entry.")
+
+            print(f"学生 {student_id} のdecision: {decision}")
+
+            # Google Sheetsの指定セルにdecisionを入力
+            try:
+                column = student_columns.get(student_id)
+                if not column:
+                    print(f"学生 {student_id} の列番号が見つかりません。")
                     continue
-                print(f"[DEBUG] Parsed date_str '{date_str}' to date object: {entry_date}")
-                
-                # シートの列を日付に基づいて計算（1列目を日付1日に対応）
-                col = entry_date.day + 1
-                row = student_row_map[student_index] + 1
-                status = decision  # 取得した判定結果を使用
-                
-                print(f"[DEBUG] Preparing to write status '{status}' to sheet at row {row}, column {col} (Date: {entry_date})")
-                
-                current_value = worksheet.cell(row, col).value
-                print(f"[DEBUG] Current value at row {row}, column {col}: '{current_value}'")
-                if current_value != status:
-                    worksheet.update_cell(row, col, status)
-                    print(f"[INFO] Updated cell at row {row}, column {col} with status '{status}'.")
-                else:
-                    print(f"[DEBUG] Status '{status}' already present at row {row}, column {col}. No update needed.")
-            
-            processed_students += 1
-            print(f"[DEBUG] Completed processing for student_id: {student_id} ({processed_students}/{total_students})")
-    
-    if __name__ == "__main__":
-        initialize_firebase()
-        gclient = initialize_gspread()
-        process_attendance_and_write_sheet(gclient)
-        print("[INFO] 処理が完了しました。")
+                sheet.update_cell(row, column, decision)
+                print(f"シート {sheet_id} のセル (行: {row}, 列: {column}) にdecisionを入力しました。")
+            except Exception as e:
+                print(f"シート {sheet_id} のセル更新時にエラーが発生しました: {e}")
+
+if __name__ == "__main__":
+    main()
