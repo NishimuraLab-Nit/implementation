@@ -10,7 +10,9 @@ from oauth2client.service_account import ServiceAccountCredentials
 def initialize_firebase():
     if not firebase_admin._apps:
         print("[DEBUG] Initializing Firebase...")
-        cred = credentials.Certificate('/tmp/firebase_service_account.json')
+        cred_path = '/tmp/firebase_service_account.json'
+        print(f"[DEBUG] Using Firebase credentials from: {cred_path}")
+        cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred, {
             'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
         })
@@ -22,7 +24,9 @@ def initialize_gspread():
     print("[DEBUG] Authorizing Google Sheets API...")
     scope = ["https://spreadsheets.google.com/feeds", 
              "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
+    creds_path = '/tmp/gcp_service_account.json'
+    print(f"[DEBUG] Using GSpread credentials from: {creds_path}")
+    creds = ServiceAccountCredentials.from_json_keyfile_name(creds_path, scope)
     gclient = gspread.authorize(creds)
     print("[DEBUG] Google Sheets API authorized successfully.")
     return gclient
@@ -39,6 +43,57 @@ def get_data_from_firebase(path):
     else:
         print(f"[DEBUG] Data fetched successfully from path: {path}")
     return data
+
+# ---------------------
+# データ検証ユーティリティ
+# ---------------------
+def validate_course_info(course_info, course_id):
+    if not isinstance(course_info, dict):
+        print(f"[ERROR] course_info for course_id {course_id} is not a dictionary.")
+        return False
+    required_keys = ["course_sheet_id", "schedule"]
+    for key in required_keys:
+        if key not in course_info:
+            print(f"[ERROR] Missing key '{key}' in course_info for course_id {course_id}.")
+            return False
+    schedule = course_info.get("schedule")
+    if not isinstance(schedule, dict):
+        print(f"[ERROR] 'schedule' for course_id {course_id} is not a dictionary.")
+        return False
+    if "day" not in schedule or "time" not in schedule:
+        print(f"[ERROR] 'schedule' missing 'day' or 'time' for course_id {course_id}.")
+        return False
+    return True
+
+def validate_student_info(student_info, student_id):
+    if not isinstance(student_info, dict):
+        print(f"[ERROR] student_info for student_id {student_id} is not a dictionary.")
+        return False
+    if "student_index" not in student_info:
+        print(f"[ERROR] Missing 'student_index' in student_info for student_id {student_id}.")
+        return False
+    return True
+
+def validate_enrollment_data(enrollment_data, student_id):
+    if not isinstance(enrollment_data, dict):
+        print(f"[ERROR] enrollment_data for student_id {student_id} is not a dictionary.")
+        return False
+    if "course_id" not in enrollment_data:
+        print(f"[ERROR] Missing 'course_id' in enrollment_data for student_id {student_id}.")
+        return False
+    return True
+
+def validate_decision_data(decision_data, student_id, course_id):
+    if not isinstance(decision_data, dict):
+        print(f"[ERROR] decision_data for student_id {student_id}, course_id {course_id} is not a dictionary.")
+        return False
+    for date_str, decision in decision_data.items():
+        try:
+            datetime.datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            print(f"[ERROR] Invalid date format '{date_str}' in decision_data for student_id {student_id}, course_id {course_id}. Expected YYYY-MM-DD.")
+            return False
+    return True
 
 # ---------------------
 # メイン処理
@@ -74,6 +129,11 @@ def process_attendance_and_write_sheet(gclient):
         print(f"[DEBUG] Processing course_id: {course_id}")
         if not course_info:
             print(f"[WARNING] course_infoが存在しません。course_id: {course_id} をスキップします。")
+            continue
+        
+        # データ検証
+        if not validate_course_info(course_info, course_id):
+            print(f"[ERROR] Invalid course_info for course_id: {course_id}. Skipping.")
             continue
         
         course_sheet_id = course_info.get("course_sheet_id")
@@ -117,15 +177,18 @@ def process_attendance_and_write_sheet(gclient):
             print(f"[DEBUG] Processing student_id: {student_id} ({processed_students + 1}/{total_students})")
             
             student_info = student_info_data.get(student_id, {})
-            student_index = student_info.get("student_index")
-            if not student_index:
-                print(f"[WARNING] student_indexが見つかりません。student_id: {student_id} をスキップします。")
+            if not validate_student_info(student_info, student_id):
+                print(f"[WARNING] Invalid student_info for student_id: {student_id}. Skipping.")
                 continue
+            student_index = student_info.get("student_index")
             
             enrollment_path = f"Students/enrollment/student_index/{student_index}"
             enrollment_data = get_data_from_firebase(enrollment_path)
             if not enrollment_data:
                 print(f"[WARNING] enrollment_dataが見つかりません。student_index: {student_index} をスキップします。")
+                continue
+            if not validate_enrollment_data(enrollment_data, student_id):
+                print(f"[WARNING] Invalid enrollment_data for student_id: {student_id}. Skipping.")
                 continue
             
             enrolled_courses = enrollment_data.get("course_id", "").split(",")
@@ -145,6 +208,9 @@ def process_attendance_and_write_sheet(gclient):
             if not decision_data:
                 print(f"[WARNING] Decision dataが見つかりません。student_id: {student_id}, course_id: {course_id} をスキップします。")
                 continue
+            if not validate_decision_data(decision_data, student_id, course_id):
+                print(f"[WARNING] Invalid decision_data for student_id: {student_id}, course_id: {course_id}. Skipping.")
+                continue
             
             total_decisions = len(decision_data)
             print(f"[DEBUG] Found {total_decisions} decision entries for student_id: {student_id}, course_id: {course_id}")
@@ -152,7 +218,11 @@ def process_attendance_and_write_sheet(gclient):
             for idx, (date_str, decision) in enumerate(decision_data.items(), start=1):
                 print(f"[DEBUG] Processing decision {idx}/{total_decisions} for date: {date_str}")
                 # 日付文字列を直接解析して日付オブジェクトを取得
-                entry_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                try:
+                    entry_date = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    print(f"[ERROR] Invalid date format '{date_str}' for student_id: {student_id}, course_id: {course_id}. Skipping this entry.")
+                    continue
                 print(f"[DEBUG] Parsed date_str '{date_str}' to date object: {entry_date}")
                 
                 # シートの列を日付に基づいて計算（1列目を日付1日に対応）
