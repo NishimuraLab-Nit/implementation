@@ -225,20 +225,20 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
 
     # ② カラム・行幅などを設定するリクエスト
     requests = [
-        # 必要な列を確保 (最大 126 列など、必要に応じて増減OK)
+        # 必要な列を確保 (最大 35 列など、必要に応じて増減OK)
         {
             "appendDimension": {
                 "sheetId": new_sheet_id,
                 "dimension": "COLUMNS",
-                "length": 126
+                "length": 35
             }
         },
         # 出席番号列の幅
         create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 30),
         # 学生名列の幅
         create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 100),
-        # 日付列(2～126列)の幅
-        create_dimension_request(new_sheet_id, "COLUMNS", 2, 32, 35),
+        # 日付列(2～34列)の幅
+        create_dimension_request(new_sheet_id, "COLUMNS", 2, 33, 35),
         # ヘッダー行の高さ
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
         # 学生データ行(2～)の高さ (ここでは仮に 35 行分確保)
@@ -252,7 +252,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                     "startRowIndex": 0,
                     "endRowIndex": 35,
                     "startColumnIndex": 0,
-                    "endColumnIndex": 32
+                    "endColumnIndex": 33
                 },
                 "cell": {
                     "userEnteredFormat": {
@@ -270,7 +270,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                     "startRowIndex": 0,
                     "endRowIndex": 35,
                     "startColumnIndex": 0,
-                    "endColumnIndex": 32
+                    "endColumnIndex": 33
                 },
                 "top": {
                     "style": "SOLID",
@@ -299,7 +299,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                         "startRowIndex": 0,
                         "endRowIndex": 35,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 32
+                        "endColumnIndex": 33
                     }
                 }
             }
@@ -351,7 +351,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
     # ④ 使わないセルを黒背景に設定
     #    例えば行は 35 行目以降、列は 126 列目以降を黒にする
     requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
-    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 32, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 33, 1000))
 
     return requests
 
