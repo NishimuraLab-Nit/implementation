@@ -43,9 +43,9 @@ def get_current_date_details():
     current_day_of_month = now.day            # 日付 (数値, 例: 26)
     return current_day, current_sheet_name, current_day_of_month, now
 
-def map_date_to_column(day_of_month):
-    # 日付を列番号にマッピング (例: 1 -> 3, 26 -> 28)
-    return day_of_month + 2
+def map_date_and_period_to_column(day_of_month, period):
+    # column = ((day_as_number) * 4) + period - 2
+    return (day_of_month * 4) + period - 2
 
 def get_student_indices(student_indices_str):
     # "E523, E534" のような文字列をリストに変換
@@ -90,7 +90,7 @@ def main():
 
     # 2. 各student_indexに対して処理
     for idx, student_idx in enumerate(student_indices, start=1):
-        row_number = idx + 1  # ヘッダーが1行目にある場合、最初の学生は2行目
+        row_number = idx + 2  # 各student_idxのインデックスに2を加える
         print(f"\nProcessing Student {student_idx} (List Index: {idx}, Sheet Row: {row_number})")
 
         # 3. student_idを取得
@@ -133,18 +133,27 @@ def main():
             period_found = False
 
             for course_id in course_ids:
-                course_schedule_path = f"Courses/course_id/{course_id}/schedule/time"
-                period_time_str = get_data_from_firebase(course_schedule_path)
-                if not period_time_str:
-                    print(f"No schedule time found for course_id {course_id}.")
+                course_schedule_path = f"Courses/course_id/{course_id}/schedule"
+                course_schedule = get_data_from_firebase(course_schedule_path)
+                if not course_schedule:
+                    print(f"No schedule found for course_id {course_id}.")
+                    continue
+
+                period_time_str = course_schedule.get('time')
+                period = course_schedule.get('period')
+                if not period_time_str or not period:
+                    print(f"Incomplete schedule data for course_id {course_id}.")
                     continue
 
                 if is_within_period(current_datetime, period_time_str):
-                    period = get_data_from_firebase(f"Students/attendance/student_id/{student_id}/course_id/{course_id}/period")
                     print(f"Current time is within period {period} for course_id {course_id}.")
 
+                    # columnの計算
+                    column = map_date_and_period_to_column(current_day_of_month, period)
+                    print(f"Calculated column: {column}")
+
                     # Google Sheetsの更新
-                    course_sheet_id = get_data_from_firebase(f"Courses/course_id/{course_id}/course_sheet_id")
+                    course_sheet_id = course_schedule.get('course_sheet_id')
                     if not course_sheet_id:
                         print(f"No course_sheet_id found for course_id {course_id}.")
                         continue
@@ -155,9 +164,6 @@ def main():
 
                         sheet = sh.worksheet(current_sheet_name)
                         print(f"Using worksheet: {sheet.title}")
-
-                        column = map_date_to_column(current_day_of_month)
-                        print(f"Mapped day of month '{current_day_of_month}' to column {column}.")
 
                         sheet.update_cell(row_number, column, status)
                         print(f"Updated cell at row {row_number}, column {column} with status '{status}'.")
@@ -191,6 +197,10 @@ def main():
 
                 print(f"Course ID {course_id}: Decision='{decision}', Period={period}")
 
+                # columnの計算
+                column = map_date_and_period_to_column(current_day_of_month, period)
+                print(f"Calculated column: {column}")
+
                 # Google Sheetsの更新
                 course_sheet_id = get_data_from_firebase(f"Courses/course_id/{course_id}/course_sheet_id")
                 if not course_sheet_id:
@@ -203,9 +213,6 @@ def main():
 
                     sheet = sh.worksheet(current_sheet_name)
                     print(f"Using worksheet: {sheet.title}")
-
-                    column = map_date_to_column(current_day_of_month)
-                    print(f"Mapped day of month '{current_day_of_month}' to column {column}.")
 
                     sheet.update_cell(row_number, column, decision)
                     print(f"Updated cell at row {row_number}, column {column} with decision '{decision}'.")
