@@ -41,7 +41,7 @@ def get_current_date_details():
     current_day = now.strftime('%A')          # 曜日 (例: "Sunday")
     current_sheet_name = now.strftime('%Y-%m') # シート名 (例: "2025-01")
     current_day_of_month = now.day            # 日付 (数値, 例: 26)
-    return current_day, current_sheet_name, current_day_of_month
+    return current_day, current_sheet_name, current_day_of_month, now
 
 def map_date_to_column(day_of_month):
     # 日付を列番号にマッピング (例: 1 -> 3, 26 -> 28)
@@ -51,113 +51,170 @@ def get_student_indices(student_indices_str):
     # "E523, E534" のような文字列をリストに変換
     return [s.strip() for s in student_indices_str.split(',')]
 
+def is_within_period(current_datetime, period_time_str):
+    # period_time_strは "13:10~14:40" の形式
+    try:
+        start_str, end_str = period_time_str.split('~')
+        start_time = datetime.datetime.strptime(start_str.strip(), '%H:%M').time()
+        end_time = datetime.datetime.strptime(end_str.strip(), '%H:%M').time()
+        return start_time <= current_datetime.time() <= end_time
+    except ValueError:
+        print(f"Invalid period format: {period_time_str}")
+        return False
+
 # ---------------------
 # メイン処理
 # ---------------------
 def main():
-    current_day, current_sheet_name, current_day_of_month = get_current_date_details()
+    current_day, current_sheet_name, current_day_of_month, now = get_current_date_details()
     print(f"Current day: {current_day}")
     print(f"Current sheet name: {current_sheet_name}")
     print(f"Current day of month: {current_day_of_month}")
+    print(f"Current datetime: {now}")
 
-    # 1. Courses一覧を取得
-    courses_data = get_data_from_firebase('Courses/course_id')
-    if not courses_data:
-        print("No courses found.")
+    # 1. クラス一覧を取得（必要に応じてクラス_indexを指定）
+    class_index = 'E5'  # 例として 'E5' を使用。必要に応じて変更。
+    class_path = f"Class/class_index/{class_index}"
+    class_data = get_data_from_firebase(class_path)
+    if not class_data:
+        print(f"No data found for class_index {class_index}.")
         return
 
-    # 2. 現在の曜日と一致するコースをフィルタリング
-    matched_courses = []
-    for idx, course_info in enumerate(courses_data):
-        course_id = idx  # リストのインデックスが course_id
-        if course_id == 0:
-            continue  # インデックス0は無視
-        if not course_info:
-            print(f"Course data at index {course_id} is None.")
-            continue
-        schedule_day = course_info.get('schedule', {}).get('day')
-        if schedule_day == current_day:
-            matched_courses.append((course_id, course_info))
-            print(f"Course {course_id} matches the current day.")
-
-    if not matched_courses:
-        print("No courses match the current day.")
+    student_indices_str = class_data.get('student_index')
+    if not student_indices_str:
+        print(f"No student_index found for class_index {class_index}.")
         return
 
-    # 3. 各マッチしたコースに対して処理
-    for course_id, course_info in matched_courses:
-        print(f"\nProcessing Course ID: {course_id}, Course Name: {course_info.get('course_name')}")
+    student_indices = get_student_indices(student_indices_str)
+    print(f"Student indices for class {class_index}: {student_indices}")
 
-        # 4. Enrollmentからstudent_indicesを取得
-        enrollment_path = f"Students/enrollment/course_id/{course_id}/student_index"
-        student_indices_str = get_data_from_firebase(enrollment_path)
-        if not student_indices_str:
-            print(f"No students enrolled in course {course_id}.")
+    # 2. 各student_indexに対して処理
+    for idx, student_idx in enumerate(student_indices, start=1):
+        row_number = idx + 1  # ヘッダーが1行目にある場合、最初の学生は2行目
+        print(f"\nProcessing Student {student_idx} (List Index: {idx}, Sheet Row: {row_number})")
+
+        # 3. student_idを取得
+        student_id_path = f"Students/student_info/student_index/{student_idx}/student_id"
+        student_id = get_data_from_firebase(student_id_path)
+        if not student_id:
+            print(f"No student_id found for student_index {student_idx}.")
+            continue
+        print(f"Student ID: {student_id}")
+
+        # 4. attendanceからentryとexitを取得
+        attendance_path = f"Students/attendance/student_id/{student_id}"
+        attendance_data = get_data_from_firebase(attendance_path)
+        if not attendance_data:
+            print(f"No attendance data found for student_id {student_id}.")
             continue
 
-        student_indices = get_student_indices(student_indices_str)
-        print(f"Student indices for course {course_id}: {student_indices}")
+        # entryとexitの取得（複数ある場合は最新のものを使用）
+        entries = [v['read_datetime'] for k, v in attendance_data.items() if k.startswith('entry') and 'read_datetime' in v]
+        exits = [v['read_datetime'] for k, v in attendance_data.items() if k.startswith('exit') and 'read_datetime' in v]
 
-        # 5. 各student_indexに対して処理
-        for idx, student_idx in enumerate(student_indices, start=1):
-            row_number = idx + 1  # ヘッダーが1行目にある場合、最初の学生は2行目
-            print(f"\nProcessing Student {student_idx} (List Index: {idx}, Sheet Row: {row_number})")
+        entry = max(entries) if entries else None
+        exit_ = max(exits) if exits else None
 
-            # 6. student_idを取得
-            student_info_path = f"Students/student_info/student_index/{student_idx}/student_id"
-            student_id = get_data_from_firebase(student_info_path)
-            if not student_id:
-                print(f"No student_id found for student_index {student_idx}.")
-                continue
-            print(f"Student ID: {student_id}")
+        if not entry:
+            print(f"No entry found for student_id {student_id}. Skipping.")
+            continue
 
-            # 7. attendanceからdecisionを取得
-            decision_path = f"Students/attendance/student_id/{student_id}/course_id/{course_id}/decision"
-            decision = get_data_from_firebase(decision_path)
-            if decision is None:
-                print(f"No decision found for student_id {student_id} in course {course_id}.")
-                continue
-            print(f"Decision: {decision}")
+        # 5. 現在のdatetime
+        current_datetime = now
 
-            # 8. course_sheet_idを取得
-            sheet_id = course_info.get('course_sheet_id')
-            if not sheet_id:
-                print(f"No course_sheet_id found for course {course_id}.")
-                continue
-            print(f"Course Sheet ID: {sheet_id}")
+        # 6. entryが存在するがexitがない場合
+        if not exit_:
+            status = "⚪︎"
+            print(f"Entry exists but exit is missing for student_id {student_id}. Setting status to {status}.")
 
-            try:
-                # 9. Google Sheetを開く
-                sh = gclient.open_by_key(sheet_id)
-                print(f"Opened Google Sheet: {sh.title}")
+            # 各periodの時間内かどうかをチェック
+            course_ids_str = class_data.get('course_id', '')
+            course_ids = [cid.strip() for cid in course_ids_str.split(',') if cid.strip()]
+            period_found = False
 
-                # シート名を動的に指定 (例: "2025-01")
-                try:
-                    sheet = sh.worksheet(current_sheet_name)
-                    print(f"Using worksheet: {sheet.title}")
-                except gspread.exceptions.WorksheetNotFound:
-                    print(f"Worksheet named '{current_sheet_name}' not found in spreadsheet {sheet_id}.")
+            for course_id in course_ids:
+                course_schedule_path = f"Courses/course_id/{course_id}/schedule/time"
+                period_time_str = get_data_from_firebase(course_schedule_path)
+                if not period_time_str:
+                    print(f"No schedule time found for course_id {course_id}.")
                     continue
 
-                # 列を決定
-                column = map_date_to_column(current_day_of_month) 
-                print(f"Mapped day of month '{current_day_of_month}' to column {column}.")
+                if is_within_period(current_datetime, period_time_str):
+                    period = get_data_from_firebase(f"Students/attendance/student_id/{student_id}/course_id/{course_id}/period")
+                    print(f"Current time is within period {period} for course_id {course_id}.")
 
-                # デバッグ用：シート内の全student_indicesを取得
-                # ここでは使用しませんが、必要に応じて残しておきます。
-                # all_values = sheet.col_values(1)  # A列をstudent_indexとして取得
-                # print(f"All student indices in the sheet (Column A): {all_values}")
+                    # Google Sheetsの更新
+                    course_sheet_id = get_data_from_firebase(f"Courses/course_id/{course_id}/course_sheet_id")
+                    if not course_sheet_id:
+                        print(f"No course_sheet_id found for course_id {course_id}.")
+                        continue
 
-                # セルにdecisionを入力
-                sheet.update_cell(row_number, column, decision)
-                print(f"Updated cell at row {row_number}, column {column} with decision '{decision}'.")
+                    try:
+                        sh = gclient.open_by_key(course_sheet_id)
+                        print(f"Opened Google Sheet: {sh.title}")
 
-            except gspread.exceptions.SpreadsheetNotFound:
-                print(f"Spreadsheet with ID {sheet_id} not found.")
-            except gspread.exceptions.WorksheetNotFound:
-                print(f"Worksheet '{current_sheet_name}' not found in spreadsheet {sheet_id}.")
-            except Exception as e:
-                print(f"Error updating Google Sheet for course {course_id}, student {student_idx}: {e}")
+                        sheet = sh.worksheet(current_sheet_name)
+                        print(f"Using worksheet: {sheet.title}")
+
+                        column = map_date_to_column(current_day_of_month)
+                        print(f"Mapped day of month '{current_day_of_month}' to column {column}.")
+
+                        sheet.update_cell(row_number, column, status)
+                        print(f"Updated cell at row {row_number}, column {column} with status '{status}'.")
+                        period_found = True
+                        break  # 一致するperiodが見つかったらループを抜ける
+                    except gspread.exceptions.SpreadsheetNotFound:
+                        print(f"Spreadsheet with ID {course_sheet_id} not found.")
+                    except gspread.exceptions.WorksheetNotFound:
+                        print(f"Worksheet named '{current_sheet_name}' not found in spreadsheet {course_sheet_id}.")
+                    except Exception as e:
+                        print(f"Error updating Google Sheet for course {course_id}, student {student_idx}: {e}")
+
+            if not period_found:
+                print(f"No matching period found for current datetime {current_datetime} for student_id {student_id}.")
+
+        else:
+            # 7. entryとexitの両方が存在する場合
+            course_ids_str = class_data.get('course_id', '')
+            course_ids = [cid.strip() for cid in course_ids_str.split(',') if cid.strip()]
+
+            for course_id in course_ids:
+                decision_path = f"Students/attendance/student_id/{student_id}/course_id/{course_id}/decision"
+                period_path = f"Students/attendance/student_id/{student_id}/course_id/{course_id}/period"
+
+                decision = get_data_from_firebase(decision_path)
+                period = get_data_from_firebase(period_path)
+
+                if decision is None or period is None:
+                    print(f"Missing decision or period for course_id {course_id}, student_id {student_id}.")
+                    continue
+
+                print(f"Course ID {course_id}: Decision='{decision}', Period={period}")
+
+                # Google Sheetsの更新
+                course_sheet_id = get_data_from_firebase(f"Courses/course_id/{course_id}/course_sheet_id")
+                if not course_sheet_id:
+                    print(f"No course_sheet_id found for course_id {course_id}.")
+                    continue
+
+                try:
+                    sh = gclient.open_by_key(course_sheet_id)
+                    print(f"Opened Google Sheet: {sh.title}")
+
+                    sheet = sh.worksheet(current_sheet_name)
+                    print(f"Using worksheet: {sheet.title}")
+
+                    column = map_date_to_column(current_day_of_month)
+                    print(f"Mapped day of month '{current_day_of_month}' to column {column}.")
+
+                    sheet.update_cell(row_number, column, decision)
+                    print(f"Updated cell at row {row_number}, column {column} with decision '{decision}'.")
+                except gspread.exceptions.SpreadsheetNotFound:
+                    print(f"Spreadsheet with ID {course_sheet_id} not found.")
+                except gspread.exceptions.WorksheetNotFound:
+                    print(f"Worksheet named '{current_sheet_name}' not found in spreadsheet {course_sheet_id}.")
+                except Exception as e:
+                    print(f"Error updating Google Sheet for course {course_id}, student {student_idx}: {e}")
 
 if __name__ == "__main__":
     main()
