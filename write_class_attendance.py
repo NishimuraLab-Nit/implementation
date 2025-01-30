@@ -5,45 +5,31 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 # ---------------------
-# 定数定義
+# Firebase & GSpread 初期化
 # ---------------------
-# 各時限の時間帯 (開始, 終了) を datetime.time で定義
-# 実運用では、分単位のゆらぎや厳密な比較など考慮が必要です
-PERIOD_TIMES = {
-    1: (datetime.time(8, 50),  datetime.time(10, 20)),
-    2: (datetime.time(10, 30), datetime.time(12, 0)),
-    3: (datetime.time(13, 10), datetime.time(14, 40)),
-    4: (datetime.time(14, 50), datetime.time(16, 20))
-}
+if not firebase_admin._apps:
+    cred = credentials.Certificate('/tmp/firebase_service_account.json')
+    firebase_admin.initialize_app(cred, {
+        'databaseURL': 'https://test-51ebc-default-rtdb.firebaseio.com/'
+    })
+    print("Firebase initialized.")
+
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+]
+creds = ServiceAccountCredentials.from_json_keyfile_name('/tmp/gcp_service_account.json', scope)
+gclient = gspread.authorize(creds)
+print("Google Sheets API authorized.")
+
 
 # ---------------------
-# Firebase & GSpread初期化
-# ---------------------
-def init_firebase_and_gspread():
-    # Firebase初期化
-    if not firebase_admin._apps:
-        cred = credentials.Certificate("/tmp/firebase_service_account.json")
-        firebase_admin.initialize_app(cred, {
-            "databaseURL": "https://test-51ebc-default-rtdb.firebaseio.com/"
-        })
-        print("Firebase initialized.")
-
-    # GSpread初期化
-    scope = [
-        "https://spreadsheets.google.com/feeds",
-        "https://www.googleapis.com/auth/drive"
-    ]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("/tmp/gcp_service_account.json", scope)
-    gclient = gspread.authorize(creds)
-    print("Google Sheets API authorized.")
-
-    return gclient
-
-# ---------------------
-# Firebaseからデータ取得
+# Firebase アクセス関数
 # ---------------------
 def get_data_from_firebase(path):
-    """与えられたFirebase Realtime Databaseのパスからデータを取得"""
+    """
+    指定したRealtime Databaseパスからデータを取得する。
+    """
     print(f"Fetching data from Firebase path: {path}")
     ref = db.reference(path)
     data = ref.get()
@@ -52,155 +38,204 @@ def get_data_from_firebase(path):
     return data
 
 # ---------------------
-# 現在日時 → 当日のシート名・列の算出
+# ヘルパー関数
 # ---------------------
 def get_current_date_details():
     """
-    例:
-        now = 2025-01-26 09:35
-        current_sheet_name = "2025-01"
-        current_day_of_month = 26
+    実行時の日時を取得し、曜日・シート名・日付(数値)を返す。
     """
     now = datetime.datetime.now()
-    current_sheet_name = now.strftime('%Y-%m')
-    current_day_of_month = now.day
-    return now, current_sheet_name, current_day_of_month
+    current_day = now.strftime('%A')           # 例: "Sunday"
+    current_sheet_name = now.strftime('%Y-%m') # 例: "2025-01"
+    current_day_of_month = now.day            # 例: 26
+    return now, current_day, current_sheet_name, current_day_of_month
 
-def get_current_period(now):
+def map_date_period_to_column(day_of_month, period):
     """
-    現在時刻がどの時限に当たるかを取得する。
-    PERIOD_TIMES の範囲に合致しない場合は None を返す。
+    列番号 = (日付*4) + period - 2
+    
+    例) 日付=1, period=1 ⇒ 列=3
+        日付=26, period=3 ⇒ 列 = (26*4)+3-2 = 105
     """
-    now_time = now.time()  # datetime.time オブジェクト
-    for period, (start_t, end_t) in PERIOD_TIMES.items():
-        if start_t <= now_time <= end_t:
-            return period
+    return (day_of_month * 4) + period - 2
+
+def parse_student_indices(student_indices_str):
+    """
+    "E523, E534" のような文字列をリストに変換
+    """
+    return [s.strip() for s in student_indices_str.split(',')]
+
+def parse_course_ids(course_ids_str):
+    """
+    "1, 2" のような文字列をリストに変換（数値化もする）
+    """
+    ids = [s.strip() for s in course_ids_str.split(',')]
+    return [int(i) for i in ids if i.isdigit()]
+
+def get_period_from_now(now):
+    """
+    現在時刻がどのperiodに該当するかを判定して返す。
+    以下は固定した例です。要件に合わせて修正可。
+    
+      period1: 08:50-10:20
+      period2: 10:30-12:00
+      period3: 13:10-14:40
+      period4: 14:50-16:20
+    
+    該当なしの場合は None を返す。
+    """
+    # 当日の年月日を維持して、時刻だけ上書き
+    def hm_to_dt(hh, mm):
+        return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+
+    time_ranges = {
+        1: (hm_to_dt(8, 50), hm_to_dt(10, 20)),
+        2: (hm_to_dt(10, 30), hm_to_dt(12, 0)),
+        3: (hm_to_dt(13, 10), hm_to_dt(14, 40)),
+        4: (hm_to_dt(14, 50), hm_to_dt(16, 20)),
+    }
+
+    for p, (start, end) in time_ranges.items():
+        if start <= now <= end:
+            return p
     return None
 
-def map_row_column(day_of_month, student_index_position, period):
+def find_course_id_by_period(possible_course_ids, target_period):
     """
-    row = 学生idxループの通し番号 + 2
-    column = (日付×4) + period - 2
+    与えられた course_id リストのうち、Courses の schedule.period == target_period
+    となる course_id を一つ返す。
+    存在しない場合は None
     """
-    row = student_index_position + 2
-    column = (day_of_month * 4) + period - 2
-    return row, column
+    for cid in possible_course_ids:
+        course_info = get_data_from_firebase(f"Courses/course_id/{cid}")
+        if course_info is None:
+            continue
+        course_schedule = course_info.get('schedule', {})
+        if course_schedule.get('period') == target_period:
+            return cid
+    return None
+
 
 # ---------------------
 # メイン処理
 # ---------------------
-def main():
-    gclient = init_firebase_and_gspread()
-    now, current_sheet_name, current_day_of_month = get_current_date_details()
+def main(class_index="E5"):
+    # 1. 現在日時の取得
+    now, current_day, current_sheet_name, current_day_of_month = get_current_date_details()
+    print(f"Now: {now}")
+    print(f"Current day: {current_day}")
+    print(f"Current sheet name: {current_sheet_name}")
+    print(f"Current day of month: {current_day_of_month}")
 
-    # ---- 1. どのクラスを処理するか ----
-    # 例: class_index="E5" とする
-    class_index = "E5"
-
-    # Class配下のデータを取得
+    # 2. Class データ取得（class_sheet_id, course_id, student_index など）
     class_data_path = f"Class/class_index/{class_index}"
     class_data = get_data_from_firebase(class_data_path)
     if not class_data:
-        print(f"No class data found for class_index={class_index}")
+        print(f"No data found for class_index: {class_index}")
         return
 
-    # 例: class_data["student_index"] -> "E523, E534"
-    #     class_data["class_sheet_id"] -> "xxxx..."
-    student_indices_str = class_data.get("student_index")
-    class_sheet_id = class_data.get("class_sheet_id")
-    if not student_indices_str or not class_sheet_id:
-        print("student_index または class_sheet_id が見つかりません。")
+    class_sheet_id = class_data.get('class_sheet_id')
+    if not class_sheet_id:
+        print(f"No class_sheet_id found under Class/class_index/{class_index}")
         return
 
-    # student_index をリスト化
-    student_indices = [s.strip() for s in student_indices_str.split(',')]
-    print("Target student_indices:", student_indices)
+    # 例: "1, 2"
+    course_ids_str = class_data.get('course_id', "")
+    if not course_ids_str:
+        print(f"No course_id info under Class/class_index/{class_index}")
+        return
+    possible_course_ids = parse_course_ids(course_ids_str)
 
-    # ---- 2. 対象スプレッドシートを開く ----
+    # 例: "E523, E534"
+    student_indices_str = class_data.get('student_index', "")
+    if not student_indices_str:
+        print(f"No student_index info under Class/class_index/{class_index}")
+        return
+    student_indices = parse_student_indices(student_indices_str)
+    print(f"Target class_sheet_id: {class_sheet_id}")
+    print(f"Possible course_ids: {possible_course_ids}")
+    print(f"Student indices: {student_indices}")
+
+    # 3. 現在の時刻がどの period に該当するか判定
+    period = get_period_from_now(now)
+    if period is None:
+        print("現在の時刻はどの授業時間にも該当しないため、処理をスキップします。")
+        return
+    print(f"Current time corresponds to period: {period}")
+
+    # 4. period に合致するコースを特定
+    target_course_id = find_course_id_by_period(possible_course_ids, period)
+    if target_course_id is None:
+        print(f"Class {class_index} に紐づくコースの中で period={period} のコースが見つかりません。スキップします。")
+        return
+    print(f"Target course_id for period {period} is: {target_course_id}")
+
+    # 5. Google シートを開いて該当ワークシートを取得
     try:
         sh = gclient.open_by_key(class_sheet_id)
         print(f"Opened Google Sheet: {sh.title}")
+        try:
+            sheet = sh.worksheet(current_sheet_name)
+        except gspread.exceptions.WorksheetNotFound:
+            print(f"Worksheet '{current_sheet_name}' not found in spreadsheet {class_sheet_id}.")
+            return
     except gspread.exceptions.SpreadsheetNotFound:
         print(f"Spreadsheet with ID {class_sheet_id} not found.")
         return
+    print(f"Using worksheet: {sheet.title}")
 
-    # シート名を選択 (例: "2025-01")
-    try:
-        sheet = sh.worksheet(current_sheet_name)
-        print(f"Using worksheet: {sheet.title}")
-    except gspread.exceptions.WorksheetNotFound:
-        print(f"Worksheet named '{current_sheet_name}' not found in spreadsheet {class_sheet_id}.")
-        return
-
-    # ---- 3. 現在時刻がどの時限かを判定 ----
-    #      ※ 「実行時刻に対応する時限だけ」を書き込む想定
-    current_period = get_current_period(now)
-    if current_period is None:
-        print("現在時刻はどの時限にも該当しないため、書き込みを行いません。")
-        return
-
-    print(f"Current time: {now}, This is period {current_period}.")
-
-    # ---- 4. 各 student_index ごとの処理 ----
+    # 6. 各 student_index について attendance をチェック
     for idx, student_idx in enumerate(student_indices, start=1):
-        print(f"\n=== Processing StudentIndex={student_idx} (index={idx}) ===")
+        row_number = idx + 2  # ヘッダーが1行目にある想定 → 受講生1人目は 2行目
+        print(f"\nProcessing student_index: {student_idx} (row={row_number})")
 
-        # 4-1. student_id を取得
+        # student_id を取得
         student_id_path = f"Students/student_info/student_index/{student_idx}/student_id"
         student_id = get_data_from_firebase(student_id_path)
         if not student_id:
             print(f"No student_id found for student_index {student_idx}. Skipping.")
             continue
+        print(f"Found student_id: {student_id}")
 
-        print(f"Found student_id={student_id} for student_index={student_idx}.")
-
-        # 4-2. 学生の attendance を取得
-        #      Students/attendance/student_id/{student_id}
+        # attendance データ
         attendance_path = f"Students/attendance/student_id/{student_id}"
         attendance_data = get_data_from_firebase(attendance_path)
         if not attendance_data:
-            print(f"No attendance data found for student_id={student_id}. Skipping.")
+            print(f"No attendance data for student_id {student_id}. Skipping.")
             continue
 
-        # ---- 5. 現在時限に対応する entry/exit のキーを確認 ----
-        #      例: period=2 なら entry2, exit2
-        entry_key = f"entry{current_period}"
-        exit_key = f"exit{current_period}"
+        # entry{period} と exit{period} を確認
+        entry_key = f"entry{period}"
+        exit_key  = f"exit{period}"
 
         if entry_key not in attendance_data:
-            print(f"{entry_key} not found => This student did not enter in period {current_period}. Skipping.")
-            continue
+            print(f"No {entry_key} found ⇒ skip.")
+            continue  # entryが無い場合はスキップ
 
-        # entry はある
-        # exit がない => "○"
-        # exit もある => decision を読み取る
+        # entry{period} があった場合
         if exit_key not in attendance_data:
-            status = "○"  # 在室中
+            # exitが無い ⇒ ステータス "◯"
+            status = "◯"
+            print(f"entry{period} found but exit{period} not found ⇒ status='{status}'")
         else:
-            # ---- 6. course_id 配列から該当 period を持つ decision を取得 ----
-            #     attendance_data["course_id"] は配列または辞書になっている想定
-            course_id_array = attendance_data.get("course_id")
-            decision = None
-            if isinstance(course_id_array, list):
-                # 各要素に { "decision": "...", "period": 数字 } が入っている想定
-                for elem in course_id_array:
-                    if not elem:
-                        continue
-                    if elem.get("period") == current_period:
-                        decision = elem.get("decision")
-                        break
+            # entry と exit 両方ある ⇒ decision を取得
+            decision_path = f"Students/attendance/student_id/{student_id}/course_id/{target_course_id}/decision"
+            decision = get_data_from_firebase(decision_path)
+            if decision is None:
+                print(f"No decision found at {decision_path}. Defaulting to '×' or skipping.")
+                status = "×"  # ここは運用次第で変えてください
+            else:
+                status = decision
+            print(f"entry{period} and exit{period} found ⇒ decision='{status}'")
 
-            status = decision if decision else "?"  # 該当が無い場合は "?" など
-
-        # ---- 7. シートの書き込み ----
-        row, column = map_row_column(current_day_of_month, idx, current_period)
-        print(f" -> Updating row={row}, col={column} with status='{status}'")
+        # 7. シートに書き込み
+        column_number = map_date_period_to_column(current_day_of_month, period)
         try:
-            sheet.update_cell(row, column, status)
+            sheet.update_cell(row_number, column_number, status)
+            print(f"Updated cell(row={row_number}, col={column_number}) with '{status}'.")
         except Exception as e:
-            print(f"Error updating cell: {e}")
-
-    print("Done.")
+            print(f"Error updating sheet: {e}")
 
 if __name__ == "__main__":
-    main()
+    # 例として class_index="E5" を指定
+    main("E5")
