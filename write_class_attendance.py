@@ -215,7 +215,7 @@ def main(class_index="E5"):
             # "2025-01-26 09:00:50" のような文字列をパース
             try:
                 dt_obj = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-                status = dt_obj.strftime("%Y-%m")
+                status = dt_obj.strftime("%H-%M")
             except ValueError:
                 # パース失敗時は原文そのままとするか、スキップするかは運用次第
                 status = entry_time_str  # とりあえず原文を入れる
