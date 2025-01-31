@@ -1,9 +1,9 @@
 import datetime
+import pytz         # 日本時間を扱うために使用
 import firebase_admin
 from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import pytz
 
 # ---------------------
 # Firebase & GSpread 初期化
@@ -43,25 +43,15 @@ def get_data_from_firebase(path):
 # ---------------------
 def get_current_date_details():
     """
-    実行時の日時を取得し、曜日・シート名・日付(数値)を返す。
+    実行時の日時を【日本時間 (JST)】で取得し、曜日・シート名・日付(数値)を返す。
     """
-    now = datetime.datetime.now()
-    current_day = now.strftime('%A')           # 例: "Sunday"
-    current_sheet_name = now.strftime('%Y-%m') # 例: "2025-01"
-    current_day_of_month = now.day            # 例: 26
-    return now, current_day, current_sheet_name, current_day_of_month
-
-def get_current_date_details():
-    # 日本時間を指定
     jst = pytz.timezone("Asia/Tokyo")
     now = datetime.datetime.now(jst)
-    
+
     current_day = now.strftime('%A')           # 例: "Sunday"
     current_sheet_name = now.strftime('%Y-%m') # 例: "2025-01"
     current_day_of_month = now.day            # 例: 26
-    
     return now, current_day, current_sheet_name, current_day_of_month
-
 
 def map_date_period_to_column(day_of_month, period):
     """
@@ -97,7 +87,7 @@ def get_period_from_now(now):
     
     該当なしの場合は None を返す。
     """
-    # 当日の年月日を維持して、時刻だけ上書き
+    # 当日の年月日を維持して、時刻だけ上書きするヘルパー
     def hm_to_dt(hh, mm):
         return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
 
@@ -133,9 +123,9 @@ def find_course_id_by_period(possible_course_ids, target_period):
 # メイン処理
 # ---------------------
 def main(class_index="E5"):
-    # 1. 現在日時の取得
+    # 1. 現在日時の取得 (日本時間)
     now, current_day, current_sheet_name, current_day_of_month = get_current_date_details()
-    print(f"Now: {now}")
+    print(f"Now (JST): {now}")
     print(f"Current day: {current_day}")
     print(f"Current sheet name: {current_sheet_name}")
     print(f"Current day of month: {current_day_of_month}")
@@ -249,6 +239,7 @@ def main(class_index="E5"):
         except Exception as e:
             print(f"Error updating sheet: {e}")
 
+
 if __name__ == "__main__":
-    # 例として class_index="E5" を指定
+    # 例として class_index="E5" を指定して実行
     main("E5")
