@@ -1,5 +1,5 @@
 import datetime
-import pytz         # 日本時間を扱うために使用
+from zoneinfo import ZoneInfo  # Python3.9以降なら標準ライブラリでOK
 import firebase_admin
 from firebase_admin import credentials, db
 import gspread
@@ -44,9 +44,9 @@ def get_data_from_firebase(path):
 def get_current_date_details():
     """
     実行時の日時を【日本時間 (JST)】で取得し、曜日・シート名・日付(数値)を返す。
+    (Python3.9以降で利用可能な zoneinfo を使用)
     """
-    jst = pytz.timezone("Asia/Tokyo")
-    now = datetime.datetime.now(jst)
+    now = datetime.datetime.now(ZoneInfo("Asia/Tokyo"))
 
     current_day = now.strftime('%A')           # 例: "Sunday"
     current_sheet_name = now.strftime('%Y-%m') # 例: "2025-01"
@@ -56,22 +56,15 @@ def get_current_date_details():
 def map_date_period_to_column(day_of_month, period):
     """
     列番号 = (日付*4) + period - 2
-    
-    例) 日付=1, period=1 ⇒ 列=3
-        日付=26, period=3 ⇒ 列 = (26*4)+3-2 = 105
     """
     return (day_of_month * 4) + period - 2
 
 def parse_student_indices(student_indices_str):
-    """
-    "E523, E534" のような文字列をリストに変換
-    """
+    """ "E523, E534" のような文字列をリストに変換 """
     return [s.strip() for s in student_indices_str.split(',')]
 
 def parse_course_ids(course_ids_str):
-    """
-    "1, 2" のような文字列をリストに変換（数値化もする）
-    """
+    """ "1, 2" のような文字列をリストに変換（数値化もする） """
     ids = [s.strip() for s in course_ids_str.split(',')]
     return [int(i) for i in ids if i.isdigit()]
 
@@ -79,15 +72,12 @@ def get_period_from_now(now):
     """
     現在時刻がどのperiodに該当するかを判定して返す。
     以下は固定した例です。要件に合わせて修正可。
-    
       period1: 08:50-10:20
       period2: 10:30-12:00
       period3: 13:10-14:40
       period4: 14:50-16:20
-    
     該当なしの場合は None を返す。
     """
-    # 当日の年月日を維持して、時刻だけ上書きするヘルパー
     def hm_to_dt(hh, mm):
         return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
 
@@ -118,7 +108,6 @@ def find_course_id_by_period(possible_course_ids, target_period):
             return cid
     return None
 
-
 # ---------------------
 # メイン処理
 # ---------------------
@@ -130,7 +119,7 @@ def main(class_index="E5"):
     print(f"Current sheet name: {current_sheet_name}")
     print(f"Current day of month: {current_day_of_month}")
 
-    # 2. Class データ取得（class_sheet_id, course_id, student_index など）
+    # 2. Class データ取得
     class_data_path = f"Class/class_index/{class_index}"
     class_data = get_data_from_firebase(class_data_path)
     if not class_data:
@@ -159,7 +148,7 @@ def main(class_index="E5"):
     print(f"Possible course_ids: {possible_course_ids}")
     print(f"Student indices: {student_indices}")
 
-    # 3. 現在の時刻がどの period に該当するか判定
+    # 3. 現在の時刻がどのperiodに該当するか判定
     period = get_period_from_now(now)
     if period is None:
         print("現在の時刻はどの授業時間にも該当しないため、処理をスキップします。")
