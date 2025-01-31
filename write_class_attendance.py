@@ -3,6 +3,7 @@ import firebase_admin
 from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+import pytz
 
 # ---------------------
 # Firebase & GSpread 初期化
@@ -49,6 +50,18 @@ def get_current_date_details():
     current_sheet_name = now.strftime('%Y-%m') # 例: "2025-01"
     current_day_of_month = now.day            # 例: 26
     return now, current_day, current_sheet_name, current_day_of_month
+
+def get_current_date_details():
+    # 日本時間を指定
+    jst = pytz.timezone("Asia/Tokyo")
+    now = datetime.datetime.now(jst)
+    
+    current_day = now.strftime('%A')           # 例: "Sunday"
+    current_sheet_name = now.strftime('%Y-%m') # 例: "2025-01"
+    current_day_of_month = now.day            # 例: 26
+    
+    return now, current_day, current_sheet_name, current_day_of_month
+
 
 def map_date_period_to_column(day_of_month, period):
     """
