@@ -197,30 +197,40 @@ def main(class_index="E5"):
             continue
 
         # entry{period} と exit{period} を確認
-        entry_key = f"entry{period}"
-        exit_key  = f"exit{period}"
-        first_entry_key = "entry1"
+        entry_key = "entry1"
+        exit_key  = "exit1"
 
+        if entry_key not in attendance_data:
+            print(f"No {entry_key} found ⇒ skip.")
+            continue  # entry1が無い場合はスキップ
 
-        if first_entry_key not in attendance_data:
-            print(f"No {first_entry_key} found ⇒ skip.")
-            continue  # entryが無い場合はスキップ
-
-        # entry{period} があった場合
+        # entry1 があった場合
         if exit_key not in attendance_data:
-            # exitが無い ⇒ ステータス "◯"
-            status = "◯"
-            print(f"entry{period} found but exit{period} not found ⇒ status='{status}'")
+            # exit1 が無い ⇒ entry1["read_datetime"] を '%Y-%m' 形式でステータスに
+            entry_time_str = attendance_data[entry_key].get("read_datetime")
+            if not entry_time_str:
+                print(f"{entry_key} exists but no 'read_datetime' ⇒ skip.")
+                continue
+
+            # "2025-01-26 09:00:50" のような文字列をパース
+            try:
+                dt_obj = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
+                status = dt_obj.strftime("%Y-%m")
+            except ValueError:
+                # パース失敗時は原文そのままとするか、スキップするかは運用次第
+                status = entry_time_str  # とりあえず原文を入れる
+            print(f"entry1 found but exit1 not found ⇒ status='{status}'")
+
         else:
-            # entry と exit 両方ある ⇒ decision を取得
+            # entry1 と exit1 が両方ある ⇒ decision を取得
             decision_path = f"Students/attendance/student_id/{student_id}/course_id/{target_course_id}/decision"
             decision = get_data_from_firebase(decision_path)
             if decision is None:
-                print(f"No decision found at {decision_path}. Defaulting to '×' or skipping.")
-                status = "×"  # ここは運用次第で変えてください
+                print(f"No decision found at {decision_path}. Defaulting to '×'.")
+                status = "×"
             else:
                 status = decision
-            print(f"entry{period} and exit{period} found ⇒ decision='{status}'")
+            print(f"entry1 and exit1 found ⇒ decision='{status}'")
 
         # 7. シートに書き込み
         column_number = map_date_period_to_column(current_day_of_month, period)
