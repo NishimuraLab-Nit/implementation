@@ -197,11 +197,11 @@ def main(class_index="E5"):
             continue
 
         # entry{period} と exit{period} を確認
-        entry_key = entry1
-        exit_key  = exit1
+        entry_key = f"entry{period}"
+        exit_key  = f"exit{period}"
 
-        if entry_key not in attendance_data:
-            print(f"No {entry_key} found ⇒ skip.")
+        if entry1 not in attendance_data:
+            print(f"No entry1 found ⇒ skip.")
             continue  # entryが無い場合はスキップ
 
         # entry{period} があった場合
