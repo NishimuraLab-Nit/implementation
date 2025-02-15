@@ -335,7 +335,7 @@ def main():
     sheets_service = get_google_sheets_service()
 
     print("[Debug] Fetching class indices...")
-    class_indices = get_firebase_data("Class/class_index")
+    class_indices = get_firebase_data("Classes/class_index")
     if not class_indices or not isinstance(class_indices, dict):
         print("[Debug] Classインデックスを取得できませんでした。")
         return
