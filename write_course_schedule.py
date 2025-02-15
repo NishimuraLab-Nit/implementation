@@ -335,7 +335,8 @@ def main():
         print("[Debug] Courses データが見つかりません。")
         return
 
-    for course_id in range(1, len(courses)):
+    # ここを 1 から -> 0 からに変更
+    for course_id in range(0, len(courses)):
         print(f"[Debug] Processing course_id={course_id}")
         spreadsheet_id = get_sheet_id(course_id)
         if not spreadsheet_id:
