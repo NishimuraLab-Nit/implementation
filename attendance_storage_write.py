@@ -265,7 +265,7 @@ def export_attendance_data():
         for key in list(actions_dict.keys()):
             if key.startswith("entry") or key.startswith("exit"):
                 attendance_ref.child(student_id).child(key).delete()
-                attendance_ref.child(course_id).delete()
+                attendance_ref.child("course_id").delete()
 
         current_row += 1
 
