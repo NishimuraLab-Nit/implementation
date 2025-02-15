@@ -34,13 +34,6 @@ google_creds = service_account.Credentials.from_service_account_file(
 
 
 def create_spreadsheets_for_courses():
-    """
-    Firebaseの 'Courses/course_id' 以下にあるコースデータを取得し、
-    各コースに対して新規スプレッドシートを作成。
-      - シートのタイトルを course_name に設定
-      - 特定ユーザ(naru.ibuki020301@gmail.com) に書き込み権限付与
-      - シートIDを 'course_sheet_id' フィールドとしてFirebaseへ保存
-    """
     try:
         # すべてのコースデータを取得
         courses_ref = db.reference("Courses/course_id")
