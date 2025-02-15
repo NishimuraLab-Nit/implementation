@@ -30,11 +30,10 @@ gclient = gspread.authorize(creds)
 print("[DEBUG] Google認証が完了しました。")
 
 
-# ---------------------
-# Firebaseアクセス関連
-# ---------------------
 def get_data_from_firebase(path):
-    """Firebase Realtime Databaseからデータを取得します。"""
+    """
+    Firebase Realtime Database からデータを取得します。
+    """
     print(f"[DEBUG] get_data_from_firebase: {path}")
     ref = db.reference(path)
     data = ref.get()
@@ -43,26 +42,26 @@ def get_data_from_firebase(path):
 
 
 def update_data_in_firebase(path, data_dict):
-    """dict形式のデータを update() でまとめて更新します。"""
+    """
+    dict形式のデータを update() でまとめて更新します。
+    """
     print(f"[DEBUG] update_data_in_firebase: {path} に {data_dict} をupdateします。")
     ref = db.reference(path)
     ref.update(data_dict)
 
 
 def set_data_in_firebase(path, value):
-    """単一の値(文字列など)を set() で更新します。"""
+    """
+    単一の値を set() で更新します。
+    """
     print(f"[DEBUG] set_data_in_firebase: {path} に {value} をsetします。")
     ref = db.reference(path)
     ref.set(value)
 
 
-# ---------------------
-# ユーティリティ
-# ---------------------
 def parse_datetime(dt_str, fmt="%Y-%m-%d %H:%M:%S"):
     """
-    文字列をdatetimeにパースする。
-    失敗すれば None を返す。
+    文字列を datetime にパースします。失敗した場合は None を返します。
     """
     if not dt_str:
         return None
@@ -76,8 +75,8 @@ def parse_datetime(dt_str, fmt="%Y-%m-%d %H:%M:%S"):
 
 def combine_date_and_time(date_dt, time_obj):
     """
-    date部分と time部分を合体して datetime を作る。
-    例: 2025-01-01 (date) と 09:30:00 (time) を合体 → 2025-01-01 09:30:00
+    date部分と time部分を合体して datetime を作ります。
+    例: 2025-01-01 と 09:30 を合体 → 2025-01-01 09:30:00
     """
     return datetime.datetime(
         date_dt.year,
@@ -89,7 +88,15 @@ def combine_date_and_time(date_dt, time_obj):
     )
 
 
-# period に対する開始～終了時刻のマッピング
+def parse_hhmm(hhmm_str):
+    """
+    'HH:MM' を datetime.time に変換します。
+    """
+    hh, mm = map(int, hhmm_str.split(":"))
+    return datetime.time(hh, mm, 0)
+
+
+# period ごとの開始～終了時刻
 PERIOD_TIME_MAP = {
     1: ("08:50", "10:20"),
     2: ("10:30", "12:00"),
@@ -98,42 +105,29 @@ PERIOD_TIME_MAP = {
 }
 
 
-def parse_hhmm(hhmm_str):
-    """
-    'HH:MM' の形式を datetime.time に変換するユーティリティ関数。
-    """
-    hh, mm = map(int, hhmm_str.split(":"))
-    return datetime.time(hh, mm, 0)
-
-
-# ---------------------
-# 出席判定ロジック（新仕様）
-# ---------------------
 def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     """
-    1コマ分（start_dt～finish_dt）の出席判定を行う。
-    entry_dt, exit_dt は入室/退室時刻。途中で次のコマへ分割が必要な場合は next_period_data を返す。
-    戻り値: (ステータス文字列, 修正後entry_dt, 修正後exit_dt, 次コマ用データ or None)
+    1コマ分の出席判定を行い、ステータスと修正後の入退室時刻、次コマ用データを返します。
     """
     td_5min = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
 
-    # (1) 欠席 (×)
     if entry_dt and entry_dt >= finish_dt:
+        # 欠席
         return "×", entry_dt, exit_dt, None
 
-    # (2) 早退 (△早)
     if (
         entry_dt
         and exit_dt
         and entry_dt <= (start_dt + td_5min)
         and exit_dt < (finish_dt - td_5min)
     ):
+        # 早退
         delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
         return f"△早{delta_min}分", entry_dt, exit_dt, None
 
-    # (3) 出席 (〇) の3パターン
-    # (3-1)
+    # 出席(○)のパターン
+    # 1. 時間内に入退室が収まる
     if (
         entry_dt
         and exit_dt
@@ -142,21 +136,24 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     ):
         return "〇", entry_dt, exit_dt, None
 
-    # (3-2.1)
+    # 2. 授業時間を超えても退出していない or 次コマにまたがる
     if (
         entry_dt
         and exit_dt
         and entry_dt <= (start_dt + td_5min)
         and exit_dt >= (finish_dt + td_5min)
     ):
-        status_str = "〇"
+        # 入室はOKだが、終了時間を超えている
         original_exit = exit_dt
         updated_exit_dt = finish_dt
         next_entry_dt = finish_dt + td_10min
         next_exit_dt = original_exit
-        return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    # (3-2.2)
+        # exitが授業時間終了前であれば「△早◯分」になる場合もある
+        # ただしここは (exit_dt >= finish_dt + 5min) なので「△早」は該当しないパターン
+        return "〇", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
+
+    # 2.2 (3-2.2 と3-2.3がやや重複しているが、ロジックを変えず保持)
     if (
         entry_dt
         and exit_dt
@@ -170,13 +167,13 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
         delta_min = int((finish_dt - exit_dt).total_seconds() // 60)
         return f"△早{delta_min}分", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    # (3-2.3)
     if (
         entry_dt
         and exit_dt
         and entry_dt >= (start_dt + td_5min)
         and exit_dt >= (finish_dt + td_5min)
     ):
+        # 遅刻 + 次コマへまたがる
         original_exit = exit_dt
         updated_exit_dt = finish_dt
         next_entry_dt = finish_dt + td_10min
@@ -184,15 +181,15 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
         delta_min = int((entry_dt - start_dt).total_seconds() // 60)
         return f"△遅{delta_min}分", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    # (3-3)
     if entry_dt and (exit_dt is None):
+        # 退出時刻が未登録(居残り)
         status_str = "〇"
         updated_exit_dt = finish_dt
         next_entry_dt = finish_dt + td_10min
         next_exit_dt = None
         return status_str, entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
-    # (4) 遅刻 (△遅)
+    # 遅刻
     if (
         entry_dt
         and exit_dt
@@ -202,19 +199,19 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
         delta_min = int((entry_dt - start_dt).total_seconds() // 60)
         return f"△遅{delta_min}分", entry_dt, exit_dt, None
 
-    # (5) その他 (？)
+    # 上記以外は不明扱い
     return "？", entry_dt, exit_dt, None
 
 
-# ---------------------
-# メインフロー
-# ---------------------
 def process_attendance_and_write_sheet():
+    """
+    出席情報を判定し、Googleスプレッドシートへ結果を書き込みます。
+    """
     now = datetime.datetime.now()
     current_weekday_str = now.strftime("%A")
     print(f"[DEBUG] 現在の曜日: {current_weekday_str}")
 
-    # 各種データを取得
+    # attendance_data の取得
     print("[DEBUG] attendance_data を取得します。")
     attendance_data = get_data_from_firebase("Students/attendance/student_id")
     if not attendance_data:
@@ -252,7 +249,7 @@ def process_attendance_and_write_sheet():
             print(f"[DEBUG] student_id={student_id} の student_indexが空。スキップします。")
             continue
 
-        # enrollment (student_index -> { "course_id": "1,2,3" ... })
+        # enrollment (course_id一覧)
         print(f"[DEBUG] enrollment_data から student_index={student_index} を取得します。")
         enroll_info = enrollment_data_all.get(student_index)
         if not enroll_info or "course_id" not in enroll_info:
@@ -263,9 +260,7 @@ def process_attendance_and_write_sheet():
         enrolled_course_ids = [c.strip() for c in enrolled_course_str.split(",") if c.strip()]
         print(f"[DEBUG] student_index={student_index} が履修しているコース: {enrolled_course_ids}")
 
-        # -----------------
-        # 当日の曜日に合致するコースを抽出し、periodでソート
-        # -----------------
+        # 当日の曜日に合致するコースを抽出 (periodでソート)
         valid_course_list = []
         for cid_str in enrolled_course_ids:
             try:
@@ -290,11 +285,10 @@ def process_attendance_and_write_sheet():
             if day_in_course == current_weekday_str:
                 valid_course_list.append((period_in_course, cid_int))
 
-        # periodをキーに昇順ソート
         valid_course_list.sort(key=lambda x: x[0])
         print(f"[DEBUG] => 曜日({current_weekday_str})が一致する(ソート後)コース: {valid_course_list}")
 
-        # entry/exit の日付取得 (最初に見つかったentryXのread_datetimeの日付を基準日とする)
+        # entry/exitの日付取得
         base_date = None
         for i in range(1, 5):
             ekey = f"entry{i}"
@@ -311,9 +305,7 @@ def process_attendance_and_write_sheet():
         date_str = base_date.strftime("%Y-%m-%d")
         print(f"[DEBUG] => student_id={student_id} / 基準日: {date_str}")
 
-        # -----------------
         # period昇順で処理
-        # -----------------
         for new_course_idx, (period_in_course, cid_int) in enumerate(valid_course_list, start=1):
             course_info = courses_all[cid_int]
             sched = course_info.get("schedule", {})
@@ -326,14 +318,11 @@ def process_attendance_and_write_sheet():
             xkey = f"exit{period_in_course}"
             print(f"[DEBUG] 判定対象: course_id={cid_int}, period={period_in_course} -> ekey={ekey}, xkey={xkey}")
 
-            # entryが無い場合は欠席扱い
             if ekey not in att_dict:
                 print(f"[DEBUG] {ekey} が無いため欠席(×)扱いとします。")
                 status = "×"
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
                 set_data_in_firebase(decision_path, status)
-
-                # ここで results_dict に cid_int も含めて保存
                 results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
                 continue
 
@@ -358,7 +347,6 @@ def process_attendance_and_write_sheet():
             )
             print(f"[DEBUG] => 判定結果: {status}")
 
-            # 変更がある場合は Firebase を更新
             updates = {}
             if new_entry_dt and (new_entry_dt != entry_dt):
                 updates[ekey] = {
@@ -366,6 +354,7 @@ def process_attendance_and_write_sheet():
                     "serial_number": entry_info.get("serial_number", ""),
                 }
                 att_dict[ekey] = updates[ekey]
+
             if new_exit_dt and exit_dt and (new_exit_dt != exit_dt):
                 updates[xkey] = {
                     "read_datetime": new_exit_dt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -379,13 +368,11 @@ def process_attendance_and_write_sheet():
                 }
                 att_dict[xkey] = updates[xkey]
 
-            # 次コマ用データがあれば更新
             if next_period_data:
                 next_ekey = f"entry{period_in_course + 1}"
                 next_xkey = f"exit{period_in_course + 1}"
                 next_e, next_x = next_period_data
                 print(f"[DEBUG] 次コマ用データを作成します。 entry={next_e}, exit={next_x}")
-
                 if next_e:
                     updates[next_ekey] = {
                         "read_datetime": next_e.strftime("%Y-%m-%d %H:%M:%S"),
@@ -405,7 +392,6 @@ def process_attendance_and_write_sheet():
 
             decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
             set_data_in_firebase(decision_path, status)
-
             results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
 
     print("[DEBUG] === シート書き込み処理を開始します。===")
@@ -423,13 +409,11 @@ def process_attendance_and_write_sheet():
             print(f"[DEBUG] シートを開けませんでした。例外: {e}")
             continue
 
-        # この student_index に該当する出席判定結果のみ取り出し
         std_result_items = {k: v for k, v in results_dict.items() if k[0] == std_idx}
         if not std_result_items:
             print(f"[DEBUG] student_index={std_idx} に該当する出席判定結果がありません。スキップします。")
             continue
 
-        # 履修コース一覧を再度取得
         enroll_info = enrollment_data_all.get(std_idx)
         if not enroll_info or "course_id" not in enroll_info:
             print(f"[DEBUG] student_index={std_idx} の enrollment_data がありません。スキップします。")
@@ -443,7 +427,6 @@ def process_attendance_and_write_sheet():
             yyyymm = date_str[:7]  # "YYYY-MM"
             day = int(date_str[8:10])  # "dd"
 
-            # ワークシートを取得 or なければ作成
             try:
                 ws = sh.worksheet(yyyymm)
                 print(f"[DEBUG] 既存のワークシート {yyyymm} を取得しました。")
@@ -453,13 +436,13 @@ def process_attendance_and_write_sheet():
 
             cid_str = str(cid_int)
             try:
-                course_pos = enrolled_course_ids.index(cid_str)  # 0-based
+                course_pos = enrolled_course_ids.index(cid_str)
             except ValueError:
                 print(f"[DEBUG] cid_str={cid_str} が enrolled_course_ids に見つからないためスキップします。")
                 continue
 
-            row = course_pos + 2  # シート上で実際にデータを入れる行
-            col = day + 1         # 日付に対応させる列
+            row = course_pos + 2
+            col = day + 1
 
             print(f"[DEBUG] シート[{yyyymm}] (row={row}, col={col}) に '{status_val}' を書き込みます。")
             ws.update_cell(row, col, status_val)
