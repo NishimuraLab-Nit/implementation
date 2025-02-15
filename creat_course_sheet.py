@@ -9,10 +9,8 @@ from googleapiclient.errors import HttpError
 # Firebaseアプリ初期化
 # -------------------------
 try:
-    # すでに初期化済みかどうかを確認
     firebase_admin.get_app()
 except ValueError:
-    # 未初期化の場合のみ、証明書ファイルやDB URLを直接指定
     cred = credentials.Certificate("/tmp/firebase_service_account.json")
     firebase_admin.initialize_app(
         cred,
@@ -23,7 +21,6 @@ except ValueError:
 # -------------------------
 # Google認証情報の作成
 # -------------------------
-# スコープとサービスアカウントファイルを直接記載
 google_creds = service_account.Credentials.from_service_account_file(
     "/tmp/gcp_service_account.json",
     scopes=[
@@ -34,6 +31,10 @@ google_creds = service_account.Credentials.from_service_account_file(
 
 
 def create_spreadsheets_for_courses():
+    """
+    Courses配下のコースごとに新規スプレッドシートを作成し、
+    権限設定とFirebase上へのシートID保存を行います。
+    """
     try:
         # すべてのコースデータを取得
         courses_ref = db.reference("Courses/course_id")
@@ -45,7 +46,6 @@ def create_spreadsheets_for_courses():
 
         # コースごとに新規スプレッドシートを作成
         for course_index, course_data in enumerate(all_courses):
-            # コースが存在しない(空)場合はスキップ
             if not course_data:
                 continue
 
