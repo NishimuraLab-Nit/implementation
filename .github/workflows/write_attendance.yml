@@ -1,7 +1,7 @@
 name: Write Attendance
 on: 
   schedule:
-    - cron: '45 2 * * *'
+    - cron: '00 3 * * *'
   workflow_dispatch:
 jobs:
   build:
