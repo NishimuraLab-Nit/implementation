@@ -6,6 +6,10 @@ from googleapiclient.errors import HttpError
 
 
 def initialize_firebase():
+    """
+    Firebase Admin SDK の初期化を行います。
+    すでに初期化されている場合は再初期化を行いません。
+    """
     if not firebase_admin._apps:
         # 資格情報のパスとデータベースURLを直接埋め込み
         cred = credentials.Certificate("/tmp/firebase_service_account.json")
@@ -16,7 +20,9 @@ def initialize_firebase():
 
 
 def create_google_services():
-    # Service Accountファイルとスコープも直接埋め込み
+    """
+    Google Sheets および Drive API のクライアントを作成して返します。
+    """
     creds = service_account.Credentials.from_service_account_file(
         "/tmp/gcp_service_account.json",
         scopes=[
@@ -42,10 +48,12 @@ def fetch_students_data():
 
 
 def create_spreadsheet(sheets_service, student_number):
+    """
+    学生番号をタイトルとするスプレッドシートを新規作成し、IDを返します。
+    """
     spreadsheet_body = {
         "properties": {"title": f"{student_number}"},
     }
-
     spreadsheet = (
         sheets_service.spreadsheets()
         .create(body=spreadsheet_body, fields="spreadsheetId")
@@ -55,7 +63,9 @@ def create_spreadsheet(sheets_service, student_number):
 
 
 def set_spreadsheet_permissions(drive_service, spreadsheet_id, student_email):
-    # デフォルトの書き込み権限者のメールアドレスも直接埋め込み
+    """
+    指定のスプレッドシートに対して学生読み取り権限、既定ユーザ書き込み権限を設定します。
+    """
     permissions = [
         {
             "type": "user",
@@ -82,11 +92,18 @@ def set_spreadsheet_permissions(drive_service, spreadsheet_id, student_email):
 
 
 def save_spreadsheet_id_to_firebase(student_id, spreadsheet_id):
+    """
+    スプレッドシートIDをFirebase上の該当学生データに保存します。
+    """
     students_ref = db.reference("Students/student_info/student_index")
     students_ref.child(student_id).update({"sheet_id": spreadsheet_id})
 
 
 def create_spreadsheets_for_students():
+    """
+    学生ごとにスプレッドシートを新規作成し、
+    読み取り権限と書き込み権限の設定、FirebaseへのID登録を行います。
+    """
     initialize_firebase()
     sheets_service, drive_service = create_google_services()
     students_data = fetch_students_data()
@@ -115,9 +132,7 @@ def create_spreadsheets_for_students():
             save_spreadsheet_id_to_firebase(student_id, spreadsheet_id)
 
         except HttpError as e:
-            print(
-                f"Error creating spreadsheet for {student_name} ({student_number}): {e}"
-            )
+            print(f"Error creating spreadsheet for {student_name} ({student_number}): {e}")
 
 
 if __name__ == "__main__":
