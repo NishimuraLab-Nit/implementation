@@ -106,16 +106,12 @@ def find_course_id_by_period(possible_course_ids, target_period):
     return None
 
 
-def main(class_index="E5"):
+def process_single_class(class_index, now, current_day, current_sheet_name, current_day_of_month):
     """
+    1つのクラスを処理する。  
     指定クラスのスプレッドシートを開き、現在の時刻に該当する period のコース列に出席情報を記載します。
     """
-    now, current_day, current_sheet_name, current_day_of_month = get_current_date_details()
-    print(f"[Debug] Now (JST): {now}")
-    print(f"[Debug] Current day: {current_day}")
-    print(f"[Debug] Current sheet name: {current_sheet_name}")
-    print(f"[Debug] Current day of month: {current_day_of_month}")
-
+    print(f"\n[Debug] ========== Start processing class_index: {class_index} ==========")
     # Classデータ取得
     class_data_path = f"Class/class_index/{class_index}"
     class_data = get_data_from_firebase(class_data_path)
@@ -202,6 +198,7 @@ def main(class_index="E5"):
             if not entry_time_str:
                 print(f"[Debug] {entry_key} exists but no 'read_datetime' ⇒ skip.")
                 continue
+            # 入室のみ → 出席時間を H-M 形式で表示
             try:
                 dt_obj = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
                 status = dt_obj.strftime("%H-%M")
@@ -209,6 +206,7 @@ def main(class_index="E5"):
                 status = entry_time_str
             print(f"[Debug] entry1 found but exit1 not found ⇒ status='{status}'")
         else:
+            # 入室・退室ともにある場合 → course_id/{target_course_id}/decision を参照
             decision_path = f"Students/attendance/student_id/{student_id}/course_id/{target_course_id}/decision"
             decision = get_data_from_firebase(decision_path)
             if decision is None:
@@ -226,5 +224,33 @@ def main(class_index="E5"):
             print(f"[Debug] Error updating sheet: {e}")
 
 
+def main():
+    """
+    全クラスをループし、共通処理をまとめて実行する。
+    """
+    # 日付や現在時刻に関する情報を先に取得
+    now, current_day, current_sheet_name, current_day_of_month = get_current_date_details()
+    print(f"[Debug] Now (JST): {now}")
+    print(f"[Debug] Current day: {current_day}")
+    print(f"[Debug] Current sheet name: {current_sheet_name}")
+    print(f"[Debug] Current day of month: {current_day_of_month}")
+
+    # Firebase の "Class/class_index" から全クラス情報を一括取得
+    all_classes_data = get_data_from_firebase("Class/class_index")
+    if not all_classes_data:
+        print("[Debug] No class data found at 'Class/class_index'.")
+        return
+
+    # 取得したクラス一覧をループし、1クラスずつ処理
+    for class_index in all_classes_data.keys():
+        process_single_class(
+            class_index,
+            now,
+            current_day,
+            current_sheet_name,
+            current_day_of_month
+        )
+
+
 if __name__ == "__main__":
-    main("E5")
+    main()
