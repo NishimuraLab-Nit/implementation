@@ -9,10 +9,10 @@ import socket
 from datetime import datetime, timedelta
 
 
-# =====================
-# Firebaseの初期化
-# =====================
 def initialize_firebase():
+    """
+    Firebaseを初期化します。
+    """
     firebase_cred = credentials.Certificate("firebase-adminsdk.json")
     initialize_app(
         firebase_cred,
@@ -20,25 +20,25 @@ def initialize_firebase():
             "databaseURL": "https://test-51ebc-default-rtdb.firebaseio.com/",
         },
     )
-    print(f"[Debug] Firebase initialized.")
+    print("[Debug] Firebase initialized.")
 
 
-# =====================
-# Google Sheets APIサービスの初期化
-# =====================
 def get_google_sheets_service():
+    """
+    Google Sheets APIサービスを初期化し、リトライ付きHTTPクライアントを設定して返します。
+    """
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     google_creds = Credentials.from_service_account_file("google-credentials.json", scopes=scopes)
     authorized_http = AuthorizedHttp(google_creds, http=httplib2.Http(timeout=60))
     service = build("sheets", "v4", cache_discovery=False, http=authorized_http)
-    print(f"[Debug] Google Sheets API service initialized.")
+    print("[Debug] Google Sheets API service initialized.")
     return service
 
 
-# =====================
-# Firebaseからデータを取得
-# =====================
 def get_firebase_data(ref_path):
+    """
+    Firebaseから指定パスのデータを取得して返します。
+    """
     try:
         print(f"[Debug] Fetching data from Firebase path: {ref_path}")
         return db.reference(ref_path).get()
@@ -47,10 +47,10 @@ def get_firebase_data(ref_path):
         return None
 
 
-# =====================
-# リトライ付きリクエスト実行
-# =====================
 def execute_with_retry(request, retries=3, delay=5):
+    """
+    HttpError や socket.timeout が発生した場合にリトライするヘルパー関数。
+    """
     for attempt in range(retries):
         try:
             return request.execute()
@@ -62,10 +62,10 @@ def execute_with_retry(request, retries=3, delay=5):
                 raise
 
 
-# =====================
-# シートIDを取得
-# =====================
 def get_sheet_id(course_id):
+    """
+    コースIDに紐づくスプレッドシートIDをFirebaseから取得します。
+    """
     course_data = get_firebase_data(f"Courses/course_id/{course_id}")
     if course_data and "course_sheet_id" in course_data:
         return course_data["course_sheet_id"]
@@ -73,10 +73,10 @@ def get_sheet_id(course_id):
     return None
 
 
-# =====================
-# 学生データを取得
-# =====================
 def get_students_by_course(course_id):
+    """
+    指定したコースを履修している学生の名前リストと出席番号リストを取得して返します。
+    """
     enrollment_data = get_firebase_data(f"Students/enrollment/course_id/{course_id}")
     if not enrollment_data or "student_index" not in enrollment_data:
         print(f"[Debug] Course ID {course_id} の学生データが見つかりません。")
@@ -103,18 +103,15 @@ def get_students_by_course(course_id):
     return student_names, attendance_numbers
 
 
-# =====================
-# 以下、ヘルパー関数の定義
-# =====================
 def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_size):
     """
-    シートの行または列のサイズを設定するリクエストを作成する
+    シートの行または列のサイズを設定するリクエストを作成します。
     """
     return {
         "updateDimensionProperties": {
             "range": {
                 "sheetId": sheet_id,
-                "dimension": dimension,  # "ROWS" または "COLUMNS"
+                "dimension": dimension,
                 "startIndex": start_index,
                 "endIndex": end_index,
             },
@@ -126,7 +123,7 @@ def create_dimension_request(sheet_id, dimension, start_index, end_index, pixel_
 
 def create_cell_update_request(sheet_id, row, col, value):
     """
-    シートの特定セルに文字列を設定するリクエストを作成する
+    シートの特定セルに文字列を書き込むリクエストを作成します。
     """
     return {
         "updateCells": {
@@ -134,9 +131,7 @@ def create_cell_update_request(sheet_id, row, col, value):
                 {
                     "values": [
                         {
-                            "userEnteredValue": {
-                                "stringValue": str(value)
-                            }
+                            "userEnteredValue": {"stringValue": str(value)}
                         }
                     ]
                 }
@@ -153,7 +148,7 @@ def create_cell_update_request(sheet_id, row, col, value):
 
 def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_col, color):
     """
-    土曜・日曜などにセルの背景色を付けるリクエストを作成する
+    土曜・日曜など休日用セルに色を塗るリクエストを作成します。
     """
     return {
         "repeatCell": {
@@ -172,7 +167,7 @@ def create_weekend_color_request(sheet_id, start_row, end_row, start_col, end_co
 
 def create_black_background_request(sheet_id, start_row, end_row, start_col, end_col):
     """
-    使わない領域の背景色を黒に設定するリクエストを作成する
+    不要領域を黒背景に設定するリクエストを作成します。
     """
     return {
         "repeatCell": {
@@ -191,19 +186,15 @@ def create_black_background_request(sheet_id, start_row, end_row, start_col, end
     }
 
 
-# =====================
-# シート更新リクエストを準備
-# =====================
 def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, sheets_service, spreadsheet_id, year=2025):
     """
-    1つの月シートを作成し、学生名と出席番号を記入し、1日1列のヘッダーを作る
-    （「何限」は使わない）
+    1つの月シートを作成し、学生名・出席番号を入力し、日付列を作成するためのリクエストを組み立てます。
     """
     if not student_names:
-        print(f"[Debug] 学生名リストが空です。")
+        print("[Debug] 学生名リストが空です。")
         return []
 
-    # ① 新しいシートを追加
+    # シート作成リクエストをまず追加
     base_title = f"{year}-{str(month).zfill(2)}"
     add_sheet_request = {
         "addSheet": {
@@ -213,7 +204,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         }
     }
 
-    # シート追加リクエストをまず実行して sheetId を取得
+    # シートを追加してIDを取得
     requests = [add_sheet_request]
     print(f"[Debug] Adding new sheet titled '{base_title}'.")
     response = execute_with_retry(
@@ -228,12 +219,11 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
         None,
     )
     if new_sheet_id is None:
-        print(f"[Debug] 新しいシートのIDを取得できませんでした。")
+        print("[Debug] 新しいシートのIDを取得できませんでした。")
         return []
 
-    # ② カラム・行幅などを設定するリクエスト
+    # 列・行幅などを設定
     requests = [
-        # 必要な列を確保 (最大 35 列など、必要に応じて増減OK)
         {
             "appendDimension": {
                 "sheetId": new_sheet_id,
@@ -241,17 +231,11 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                 "length": 35,
             }
         },
-        # 出席番号列の幅
         create_dimension_request(new_sheet_id, "COLUMNS", 0, 1, 30),
-        # 学生名列の幅
         create_dimension_request(new_sheet_id, "COLUMNS", 1, 2, 100),
-        # 日付列(2～34列)の幅
-        create_dimension_request(new_sheet_id, "COLUMNS", 2, 33, 35),
-        # ヘッダー行の高さ
+        create_dimension_request(new_sheet_id, "COLUMNS", 2, 35, 35),
         create_dimension_request(new_sheet_id, "ROWS", 0, 1, 120),
-        # 学生データ行(2～)の高さ (ここでは仮に 35 行分確保)
         create_dimension_request(new_sheet_id, "ROWS", 1, 35, 30),
-        # テキストの横位置を中央揃え
         {
             "repeatCell": {
                 "range": {
@@ -259,13 +243,12 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                     "startRowIndex": 0,
                     "endRowIndex": 35,
                     "startColumnIndex": 0,
-                    "endColumnIndex": 33,
+                    "endColumnIndex": 35,
                 },
                 "cell": {"userEnteredFormat": {"horizontalAlignment": "CENTER"}},
                 "fields": "userEnteredFormat.horizontalAlignment",
             }
         },
-        # セルの境界線を設定
         {
             "updateBorders": {
                 "range": {
@@ -273,7 +256,7 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                     "startRowIndex": 0,
                     "endRowIndex": 35,
                     "startColumnIndex": 0,
-                    "endColumnIndex": 33,
+                    "endColumnIndex": 35,
                 },
                 "top": {"style": "SOLID", "width": 1},
                 "bottom": {"style": "SOLID", "width": 1},
@@ -281,7 +264,6 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                 "right": {"style": "SOLID", "width": 1},
             }
         },
-        # フィルタを適用（列が多いので全体を対象に）
         {
             "setBasicFilter": {
                 "filter": {
@@ -290,88 +272,80 @@ def prepare_update_requests(sheet_id, student_names, attendance_numbers, month, 
                         "startRowIndex": 0,
                         "endRowIndex": 35,
                         "startColumnIndex": 0,
-                        "endColumnIndex": 33,
+                        "endColumnIndex": 35,
                     }
                 }
             }
         },
     ]
 
-    # 学生名・出席番号のヘッダーを入れる
+    # 学生名・出席番号をセット
+    print("[Debug] Writing student names and attendance numbers...")
     requests.append(create_cell_update_request(new_sheet_id, 0, 1, "学生名"))
     requests.append(create_cell_update_request(new_sheet_id, 0, 0, "AN"))
 
-    # 学生名・出席番号を各行に記入
     for i, (name, attendance_number) in enumerate(zip(student_names, attendance_numbers)):
-        # 出席番号(AN)を0列に、学生名を1列に
         requests.append(create_cell_update_request(new_sheet_id, i + 1, 0, attendance_number))
         requests.append(create_cell_update_request(new_sheet_id, i + 1, 1, name))
 
-    # ③ 日付（1列のみ）を設定
+    # 日付を設定
+    print("[Debug] Setting dates...")
     japanese_weekdays = ["月", "火", "水", "木", "金", "土", "日"]
+    from datetime import datetime, timedelta
     start_date = datetime(year, month, 1)
     end_date = (start_date + timedelta(days=32)).replace(day=1) - timedelta(days=1)
-
     current_date = start_date
     start_column = 2
 
-    # 各日ごとに1列ヘッダーを設定
     while current_date <= end_date:
-        weekday = current_date.weekday()  # 月=0, 日=6
-        # 日付と曜日を改行混じりで作成
-        date_string = f"{current_date.strftime('%m')}\n月\n{current_date.strftime('%d')}\n日\n⌢\n{japanese_weekdays[weekday]}\n⌣"
-
-        # 日付セル（最上段: row=0）
+        weekday = current_date.weekday()
+        date_string = (
+            f"{current_date.strftime('%m')}\n月\n"
+            f"{current_date.strftime('%d')}\n日\n⌢\n"
+            f"{japanese_weekdays[weekday]}\n⌣"
+        )
         requests.append(create_cell_update_request(new_sheet_id, 0, start_column, date_string))
 
-        # 土曜(weekday=5)・日曜(weekday=6)の背景色を設定
-        if weekday == 5:  # 土曜
+        if weekday == 5:
             color = {"red": 0.8, "green": 0.9, "blue": 1.0}
             requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + 1, color))
-        elif weekday == 6:  # 日曜
+        elif weekday == 6:
             color = {"red": 1.0, "green": 0.8, "blue": 0.8}
             requests.append(create_weekend_color_request(new_sheet_id, 0, 35, start_column, start_column + 1, color))
 
         start_column += 1
         current_date += timedelta(days=1)
 
-    # ④ 使わないセルを黒背景に設定
-    #    例えば行は 35 行目以降、列は 126 列目以降を黒にする
+    # 不要領域を黒背景に
+    print("[Debug] Setting background color for unused cells...")
     requests.append(create_black_background_request(new_sheet_id, 35, 1000, 0, 1000))
-    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 33, 1000))
+    requests.append(create_black_background_request(new_sheet_id, 0, 1000, 35, 1000))
 
     return requests
 
 
-# =====================
-# メイン処理
-# =====================
 def main():
-    # Firebase, Google Sheets初期化
+    print("[Debug] Initializing Firebase and Google Sheets...")
     initialize_firebase()
     sheets_service = get_google_sheets_service()
 
-    # Firebaseからコース情報を取得
-    print(f"[Debug] Fetching Courses data...")
+    print("[Debug] Fetching Courses data...")
     courses = get_firebase_data("Courses/course_id")
     if not courses or not isinstance(courses, list):
-        print(f"[Debug] Courses データが見つかりません。")
+        print("[Debug] Courses データが見つかりません。")
         return
 
-    # コースIDを 1 からスタート (0 は無視する想定)
     for course_id in range(1, len(courses)):
         print(f"[Debug] Processing course_id={course_id}")
-        spreadsheet_id = get_sheet_id(course_id)  # そのコースに対応したスプレッドシートID
+        spreadsheet_id = get_sheet_id(course_id)
         if not spreadsheet_id:
             continue
 
-        # 学生名と出席番号リストを取得
         student_names, attendance_numbers = get_students_by_course(course_id)
         if not student_names:
             print(f"[Debug] No student names found for course_id={course_id}. Skipping.")
             continue
 
-        # 1～12月のシートを作成して更新
         for month in range(1, 13):
             print(f"[Debug] Preparing requests for month={month}, course_id={course_id}")
             requests = prepare_update_requests(
@@ -382,7 +356,6 @@ def main():
                 sheets_service=sheets_service,
                 spreadsheet_id=spreadsheet_id
             )
-            # リクエストがあれば送信
             if requests:
                 print(f"[Debug] Executing batchUpdate for month={month}, course_id={course_id} ...")
                 execute_with_retry(
