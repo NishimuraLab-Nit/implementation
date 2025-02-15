@@ -45,7 +45,7 @@ if students_data:
             class_data[class_index]['student_indices'].append(student_index)
 
 # データベースにClassデータを格納
-class_ref = ref.child('Class')
+class_ref = ref.child('Classes')
 for class_index, data in class_data.items():
     # course_idをカンマ区切りの文字列に変換して保存
     course_ids_str = ', '.join(data['course_ids'])
@@ -56,7 +56,7 @@ for class_index, data in class_data.items():
     class_ref.child(f'class_index/{class_index}/student_index').set(student_indices_str)
 
 # class_indexの情報を設定
-class_index_data = ref.child('Class/class_index').get()
+class_index_data = ref.child('Classes/class_index').get()
 
 if class_index_data:
     # class_indexに存在するクラスも考慮して格納
