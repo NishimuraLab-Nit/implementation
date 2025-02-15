@@ -223,7 +223,10 @@ def export_attendance_data():
         for key in list(actions_dict.keys()):
             if key.startswith("entry") or key.startswith("exit"):
                 attendance_ref.child(student_id).child(key).delete()
-                attendance_ref.child("course_id").delete()
+        
+        # course_id が存在する場合も削除
+        if "course_id" in actions_dict:
+            attendance_ref.child(student_id).child("course_id").delete()
 
         current_row += 1
 
