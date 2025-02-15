@@ -25,4 +25,4 @@ jobs:
         echo "$FIREBASE_SERVICE_ACCOUNT" > /tmp/firebase_service_account.json
         echo "$GCP_SERVICE_ACCOUNT" > /tmp/gcp_service_account.json
     - name: Run script
-      run: python write_attendance.py
+      run: python attendance_storage_write.py
