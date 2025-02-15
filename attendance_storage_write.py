@@ -44,15 +44,16 @@ def get_attendance_spreadsheet_id():
         raise ValueError("attendance_sheet_id がFirebase上に存在しません。")
     return sheet_id
 
-def add_new_sheet(sheets_service, spreadsheet_id, sheet_name):
+def add_new_sheet_and_set_filter(sheets_service, spreadsheet_id, sheet_name):
     """
     既存のスプレッドシート(spreadsheet_id)に、
-    新しいシート(sheet_name)を追加し、行数2000、列数25に設定する。
-
-    すでに同名シートがある場合はエラーとなるので、
-    名前が重複しない前提で利用する。
+    新しいシート(sheet_name)を追加し、行数2000、列数25に設定。
+    さらに、全列に対してフィルターを設定する。
+    
+    戻り値: 追加したシートの数値ID (sheetId)
     """
-    requests = [
+    # 1. シート追加 (batchUpdate -> addSheet)
+    requests_add_sheet = [
         {
             "addSheet": {
                 "properties": {
@@ -65,26 +66,41 @@ def add_new_sheet(sheets_service, spreadsheet_id, sheet_name):
             }
         }
     ]
-    body = {"requests": requests}
-    response = sheets_service.spreadsheets().batchUpdate(
+    body_add_sheet = {"requests": requests_add_sheet}
+    response_add = sheets_service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
-        body=body
+        body=body_add_sheet
     ).execute()
-    return response
 
-def get_sheet_id_by_name(sheets_service, spreadsheet_id, sheet_name):
-    """
-    シート名から sheetId (数値) を取得。
-    存在しない場合は None を返す。
-    """
-    spreadsheet = sheets_service.spreadsheets().get(
-        spreadsheetId=spreadsheet_id
+    # 新規追加されたシートの数値IDを取得
+    new_sheet_id = (
+        response_add["replies"][0]["addSheet"]["properties"]["sheetId"]
+    )
+
+    # 2. フィルターを設定 (batchUpdate -> setBasicFilter)
+    #    シートID = new_sheet_id, 行は0～2000、列は0～25 (0-based index) にフィルターを適用
+    requests_set_filter = [
+        {
+            "setBasicFilter": {
+                "filter": {
+                    "range": {
+                        "sheetId": new_sheet_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 2000,     # 実際の行数
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 25    # 実際の列数
+                    }
+                }
+            }
+        }
+    ]
+    body_set_filter = {"requests": requests_set_filter}
+    sheets_service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body=body_set_filter
     ).execute()
-    for sheet in spreadsheet.get("sheets", []):
-        props = sheet.get("properties", {})
-        if props.get("title") == sheet_name:
-            return props.get("sheetId")
-    return None
+
+    return new_sheet_id
 
 def write_header_row(sheets_service, spreadsheet_id, sheet_name):
     """
@@ -93,8 +109,8 @@ def write_header_row(sheets_service, spreadsheet_id, sheet_name):
     以下、最大4ペア(entry1/exit1, entry2/exit2, ...)を考慮。
     """
     header = ["student_id"]
-    # entry/exit 1ペアあたり6列: [entryX, read_datetime, serial_number, exitX, read_datetime, serial_number]
-    for i in range(1, 5):
+    # entry/exit 1ペアにつき6列 → [entryX, read_datetime, serial_number, exitX, read_datetime, serial_number]
+    for i in range(1, 5):  # 4ペア分
         header.append(f"entry{i}")
         header.append("read_datetime")
         header.append("serial_number")
@@ -102,6 +118,7 @@ def write_header_row(sheets_service, spreadsheet_id, sheet_name):
         header.append("read_datetime")
         header.append("serial_number")
 
+    # A1:Y1 の範囲に書き込み (最大25列)
     data = [
         {
             "range": f"{sheet_name}!A1:Y1",
@@ -117,72 +134,13 @@ def write_header_row(sheets_service, spreadsheet_id, sheet_name):
         body=body
     ).execute()
 
-def apply_table_formatting(sheets_service, spreadsheet_id, sheet_name):
-    """
-    1) sheet_name に対し、A1~Y2000 の範囲を Named Range として作成 ("MyTable" 等)
-    2) その範囲に罫線を引いてテーブル風に書式設定
-    """
-    # シートID (整数) を取得
-    sheet_id = get_sheet_id_by_name(sheets_service, spreadsheet_id, sheet_name)
-    if sheet_id is None:
-        return  # シートが見つからなければなにもしない
-
-    # Named Rangeを追加するリクエスト (A1:Y2000)
-    named_range_request = {
-        "addNamedRange": {
-            "namedRange": {
-                "name": "MyTable",  # 好きな名前でOK
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": 0,   # A1の行=0
-                    "endRowIndex": 2000,  # 2000行目まで
-                    "startColumnIndex": 0,  # A列=0
-                    "endColumnIndex": 25    # Y列(25列)
-                }
-            }
-        }
-    }
-
-    # 罫線を引くリクエスト (外枠と内枠)
-    # 同じ範囲(A1:Y2000)に対し top/bottom/left/right/innerHorizontal/innerVertical を設定
-    border_style = {
-        "style": "SOLID",
-        "width": 1,
-        "color": {"red": 0, "green": 0, "blue": 0}  # 黒線
-    }
-    borders_request = {
-        "updateBorders": {
-            "range": {
-                "sheetId": sheet_id,
-                "startRowIndex": 0,
-                "endRowIndex": 2000,
-                "startColumnIndex": 0,
-                "endColumnIndex": 25
-            },
-            "top": border_style,
-            "bottom": border_style,
-            "left": border_style,
-            "right": border_style,
-            "innerHorizontal": border_style,
-            "innerVertical": border_style
-        }
-    }
-
-    requests = [named_range_request, borders_request]
-
-    body = {"requests": requests}
-    sheets_service.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body=body
-    ).execute()
-
 def export_attendance_data():
     """
     1) Firebaseから attendance_sheet_id を取得し、
        その既存スプレッドシートに当日の日付シートを追加
+       (同時に全列フィルターを設定)
     2) Students/attendance/student_id/{student_id} 以下の entryX / exitX データを取得
     3) 取得した情報をシートに書き込み、Firebase から entryX / exitX を削除
-    4) 追加したシートに「テーブル風の書式付け」を適用
     """
     # Firebase初期化
     initialize_firebase()
@@ -192,11 +150,11 @@ def export_attendance_data():
     # 既存のスプレッドシートIDを Firebase から取得
     spreadsheet_id = get_attendance_spreadsheet_id()
 
-    # 実行日をシート名にする
+    # 実行日をシート名に
     today_str = datetime.now().strftime("%Y-%m-%d")
 
-    # 新しいシートを追加 (同名シート存在しない前提)
-    add_new_sheet(sheets_service, spreadsheet_id, today_str)
+    # 新しいシートを追加し、全列フィルターを適用
+    add_new_sheet_and_set_filter(sheets_service, spreadsheet_id, today_str)
 
     # ヘッダー行を記入
     write_header_row(sheets_service, spreadsheet_id, today_str)
@@ -245,7 +203,7 @@ def export_attendance_data():
 
         # ペアごとに row_data に書き込み
         for i in range(1, 5):
-            col_start = 1 + (i - 1) * 6  # 1ペア6列、B列(インデックス1)から
+            col_start = 1 + (i - 1) * 6  # 1ペア=6列、B列(インデックス1)から
             entry_info = pairs[i]["entry"]
             exit_info = pairs[i]["exit"]
 
@@ -271,7 +229,6 @@ def export_attendance_data():
 
     # スプレッドシートに一括書き込み
     if rows_to_write:
-        # A2～Y(行数)まで一気に書き込む
         range_notation = f"{today_str}!A2:Y{1 + len(rows_to_write)}"
         body = {
             "valueInputOption": "RAW",
@@ -287,10 +244,7 @@ def export_attendance_data():
             body=body
         ).execute()
 
-    # 最後にテーブル書式を適用 (罫線＆Named Range)
-    apply_table_formatting(sheets_service, spreadsheet_id, today_str)
-
-    print("出席データのエクスポートが完了し、テーブル型に整形しました。")
+    print("出席データのエクスポートが完了しました。")
 
 def main():
     try:
