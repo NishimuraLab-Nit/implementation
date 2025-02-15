@@ -113,7 +113,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
     """
     print(f"\n[Debug] ========== Start processing class_index: {class_index} ==========")
     # Classデータ取得
-    class_data_path = f"Class/class_index/{class_index}"
+    class_data_path = f"Classes/class_index/{class_index}"
     class_data = get_data_from_firebase(class_data_path)
     if not class_data:
         print(f"[Debug] No data found for class_index: {class_index}")
