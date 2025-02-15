@@ -37,7 +37,7 @@ def create_spreadsheets_for_all_classes():
     """
     try:
         # すべてのクラスデータを取得
-        all_classes = db.reference("Class/class_index").get()
+        all_classes = db.reference("Classes/class_index").get()
         print(f"[Debug] Type of all_classes: {type(all_classes)}")
         print(f"[Debug] Content of all_classes: {all_classes}")
 
@@ -87,7 +87,7 @@ def create_spreadsheets_for_all_classes():
             print(f"[Debug] Permissions set for spreadsheet ID: {spreadsheet_id}")
 
             # Firebase にスプレッドシートIDを保存
-            class_ref = db.reference(f"Class/class_index/{class_index}/class_sheet_id")
+            class_ref = db.reference(f"Classes/class_index/{class_index}/class_sheet_id")
             class_ref.set(spreadsheet_id)
             print(f"[Debug] Spreadsheet ID saved to Firebase for class index {class_index}")
 
