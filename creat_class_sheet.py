@@ -11,16 +11,16 @@ from googleapiclient.errors import HttpError
 if not firebase_admin._apps:
     cred = credentials.Certificate("/tmp/firebase_service_account.json")
     firebase_admin.initialize_app(
-        cred, 
+        cred,
         {"databaseURL": "https://test-51ebc-default-rtdb.firebaseio.com/"},
     )
+
 
 # ===========================
 # Googleサービスの初期化
 # ===========================
-# スコープとサービスアカウントファイルを直接ベタ書きしています
 creds = service_account.Credentials.from_service_account_file(
-    "/tmp/gcp_service_account.json", 
+    "/tmp/gcp_service_account.json",
     scopes=[
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
@@ -31,6 +31,10 @@ drive_service = build("drive", "v3", credentials=creds)
 
 
 def create_spreadsheets_for_all_classes():
+    """
+    Class/class_index 配下に定義されたクラスごとにスプレッドシートを作成し、
+    担任の教師および指定ユーザに編集権限を付与、FirebaseにスプレッドシートIDを保存します。
+    """
     try:
         # すべてのクラスデータを取得
         all_classes = db.reference("Class/class_index").get()
@@ -70,7 +74,6 @@ def create_spreadsheets_for_all_classes():
                 {"type": "user", "role": "writer", "emailAddress": "naru.ibuki020301@gmail.com"},
             ]
 
-            # パーミッションをバッチ処理で追加
             batch = drive_service.new_batch_http_request()
             for permission in permissions:
                 batch.add(
