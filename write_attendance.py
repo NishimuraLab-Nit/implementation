@@ -10,7 +10,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ---------------------
 if not firebase_admin._apps:
     cred = credentials.Certificate("/tmp/firebase_service_account.json")
-    firebase_admin.initialize_app(cred, {"databaseURL": "https://test-xxxxx-default-rtdb.firebaseio.com/"})
+    firebase_admin.initialize_app(cred, {"databaseURL": "https://test-51ebc-default-rtdb.firebaseio.com/"})
 scope = [
     "https://spreadsheets.google.com/feeds",
     "https://www.googleapis.com/auth/drive",
