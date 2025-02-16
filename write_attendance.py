@@ -95,6 +95,14 @@ def parse_hhmm(hhmm_str):
     hh, mm = map(int, hhmm_str.split(":"))
     return datetime.time(hh, mm, 0)
 
+# period ごとの開始～終了時刻
+PERIOD_TIME_MAP = {
+    1: ("08:50", "10:20"),
+    2: ("10:30", "12:00"),
+    3: ("13:10", "14:40"),
+    4: ("14:50", "16:20"),
+}
+
 def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     """
     1コマ分の出席判定を行い、ステータスと修正後の入退室時刻、次コマ用データを返します。
