@@ -91,21 +91,6 @@ def get_period_from_now(now):
     return None
 
 
-def find_course_id_by_period(possible_course_ids, target_period):
-    """
-    与えられた course_id リストのうち、schedule.period == target_period のコースIDを探して返します。
-    見つからなければ None。
-    """
-    for cid in possible_course_ids:
-        course_info = get_data_from_firebase(f"Courses/course_id/{cid}")
-        if course_info is None:
-            continue
-        course_schedule = course_info.get("schedule", {})
-        if course_schedule.get("period") == target_period:
-            return cid
-    return None
-
-
 def process_single_class(class_index, now, current_day, current_sheet_name, current_day_of_month):
     """
     1つのクラスを処理する。  
@@ -147,12 +132,6 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
         return
     print(f"[Debug] Current time corresponds to period: {period}")
 
-    target_course_id = find_course_id_by_period(possible_course_ids, period)
-    if target_course_id is None:
-        print(f"[Debug] Class {class_index} に紐づくコースの中で period={period} のコースが見つかりません。")
-        return
-    print(f"[Debug] Target course_id for period {period} is: {target_course_id}")
-
     # Googleシートを開き、ワークシートを取得
     try:
         sh = gclient.open_by_key(class_sheet_id)
@@ -189,32 +168,26 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
         entry_key = "entry1"
         exit_key = "exit1"
 
+        # entryがない場合はスキップ
         if entry_key not in attendance_data:
             print(f"[Debug] No {entry_key} found ⇒ skip.")
             continue
 
+        # entryのみの場合は「○」とする
         if exit_key not in attendance_data:
-            entry_time_str = attendance_data[entry_key].get("read_datetime")
-            if not entry_time_str:
-                print(f"[Debug] {entry_key} exists but no 'read_datetime' ⇒ skip.")
-                continue
-            # 入室のみ → 出席時間を H-M 形式で表示
-            try:
-                dt_obj = datetime.datetime.strptime(entry_time_str, "%Y-%m-%d %H:%M:%S")
-                status = dt_obj.strftime("%H-%M")
-            except ValueError:
-                status = entry_time_str
+            status = "○"
             print(f"[Debug] entry1 found but exit1 not found ⇒ status='{status}'")
         else:
-            # 入室・退室ともにある場合 → course_id/{target_course_id}/decision を参照
-            decision_path = f"Students/attendance/student_id/{student_id}/course_id/{target_course_id}/decision"
-            decision = get_data_from_firebase(decision_path)
-            if decision is None:
-                print(f"[Debug] No decision found at {decision_path}. Defaulting to '×'.")
-                status = "×"
-            else:
-                status = decision
-            print(f"[Debug] entry1 and exit1 found ⇒ decision='{status}'")
+            # entry, exit両方がある場合、全てのcourse_idのdecisionを取得する
+            decisions = []
+            for cid in possible_course_ids:
+                decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid}/decision"
+                decision = get_data_from_firebase(decision_path)
+                if decision is None:
+                    decision = "×"
+                decisions.append(str(decision))
+            status = ", ".join(decisions)
+            print(f"[Debug] entry1 and exit1 found ⇒ decisions='{status}'")
 
         column_number = map_date_period_to_column(current_day_of_month, period)
         try:
