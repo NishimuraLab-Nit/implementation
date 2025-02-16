@@ -146,6 +146,14 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     # 【修正】entry はあるが exit が無い場合
     # ---------------------------
     if entry_dt and (exit_dt is None):
+            # 遅刻 + 次コマへまたがる
+    if (
+        entry_dt
+        and exit_dt
+        and entry_dt >= (start_dt + td_5min)
+    ):
+        delta_min = int((entry_dt - start_dt).total_seconds() // 60)
+        return f"△遅{delta_min}分"
         # 今回の要件：entry のみのときは「○」にしつつ新たに exit や次コマは作らない
         return "〇", entry_dt, None, None
 
