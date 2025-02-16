@@ -94,7 +94,9 @@ def get_period_from_now(now):
 def process_single_class(class_index, now, current_day, current_sheet_name, current_day_of_month):
     """
     1つのクラスを処理する。  
-    指定クラスのスプレッドシートを開き、各コースの period に対応するセルへ出席情報を記載します。
+    指定クラスのスプレッドシートを開き、
+      - entry しかない場合はコード実行時の現在 period のセルに「○」
+      - entry, exit 両方がある場合は各 course_id の period に対応するセルに決定値（decision）を記入します。
     """
     print(f"\n[Debug] ========== Start processing class_index: {class_index} ==========")
     # Classデータ取得（パスを統一）
@@ -125,7 +127,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
     print(f"[Debug] Possible course_ids: {possible_course_ids}")
     print(f"[Debug] Student indices: {student_indices}")
 
-    # ※シートは全体の出席時刻にかかわらず、各コースの period に対応するセルへ更新します。
+    # シートを取得
     try:
         sh = gclient.open_by_key(class_sheet_id)
         print(f"[Debug] Opened Google Sheet: {sh.title}")
@@ -139,6 +141,12 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
         return
 
     print(f"[Debug] Using worksheet: {sheet.title}")
+
+    # コード実行時の現在 period を取得（entryのみの場合用）
+    current_period = get_period_from_now(now)
+    if current_period is None:
+        print("[Debug] 現在の時刻はどの授業時間にも該当しません。")
+        return
 
     # 学生ごとの attendance をチェック
     for idx, student_idx in enumerate(student_indices, start=1):
@@ -165,39 +173,40 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
             print(f"[Debug] No {entry_key} found ⇒ skip.")
             continue
 
-        # 各コース毎に処理を行う
-        for cid in possible_course_ids:
-            # まず、各コースの period を取得
-            course_info = get_data_from_firebase(f"Courses/course_id/{cid}")
-            if not course_info:
-                print(f"[Debug] No course info found for course_id {cid}. Skipping this course.")
-                continue
-            course_schedule = course_info.get("schedule", {})
-            course_period = course_schedule.get("period")
-            if not course_period:
-                print(f"[Debug] No period info for course_id {cid}. Skipping this course.")
-                continue
+        if exit_key not in attendance_data:
+            # entryのみの場合：現在の period のセルのみ更新する
+            col_number = map_date_period_to_column(current_day_of_month, current_period)
+            status = "○"
+            try:
+                sheet.update_cell(row_number, col_number, status)
+                print(f"[Debug] (Entry only) Updated cell (row={row_number}, col={col_number}) with '{status}'.")
+            except Exception as e:
+                print(f"[Debug] Error updating sheet for student_index {student_idx}: {e}")
+        else:
+            # entry, exit 両方がある場合：各 course_id ごとに decision を取得し、対応する period のセルを更新
+            for cid in possible_course_ids:
+                course_info = get_data_from_firebase(f"Courses/course_id/{cid}")
+                if not course_info:
+                    print(f"[Debug] No course info found for course_id {cid}. Skipping this course.")
+                    continue
+                course_schedule = course_info.get("schedule", {})
+                course_period = course_schedule.get("period")
+                if not course_period:
+                    print(f"[Debug] No period info for course_id {cid}. Skipping this course.")
+                    continue
 
-            column_number = map_date_period_to_column(current_day_of_month, course_period)
-
-            if exit_key not in attendance_data:
-                # entry のみの場合は「○」
-                status = "○"
-                print(f"[Debug] For course_id {cid} (period {course_period}): entry only ⇒ status='{status}'")
-            else:
-                # entry, exit 両方がある場合、各 course の decision を取得
+                col_number = map_date_period_to_column(current_day_of_month, course_period)
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid}/decision"
                 decision = get_data_from_firebase(decision_path)
                 if decision is None:
-                    decision = ""
+                    decision = "×"
                 status = decision
-                print(f"[Debug] For course_id {cid} (period {course_period}): decision='{status}'")
 
-            try:
-                sheet.update_cell(row_number, column_number, status)
-                print(f"[Debug] Updated cell (row={row_number}, col={column_number}) with '{status}'.")
-            except Exception as e:
-                print(f"[Debug] Error updating sheet for course_id {cid}: {e}")
+                try:
+                    sheet.update_cell(row_number, col_number, status)
+                    print(f"[Debug] For course_id {cid} (period {course_period}), updated cell (row={row_number}, col={col_number}) with '{status}'.")
+                except Exception as e:
+                    print(f"[Debug] Error updating sheet for course_id {cid}: {e}")
 
 
 def main():
