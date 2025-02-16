@@ -92,9 +92,7 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     td_5min = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
 
-    # ---------------------------
     # 【修正】entry はあるが exit が無い場合
-    # ---------------------------
     if entry_dt and (exit_dt is None):
         if entry_dt >= (start_dt + td_5min):
             delta_min = int((entry_dt - start_dt).total_seconds() // 60)
@@ -297,7 +295,7 @@ def process_attendance_and_write_sheet():
         date_str = base_date.strftime("%Y-%m-%d")
         print(f"[DEBUG] => student_id={student_id} / 基準日: {date_str}")
 
-        # 前のperiodで entry はあるが exit が無い場合、以降のperiodは判定せず None とするフラグ
+        # 前のperiodで entry はあるが exit が無い場合、以降のperiodは判定せず特定の値（ここでは空文字列）を設定するフラグ
         incomplete_previous = False
 
         # valid_course_list の順に、1コース目→entry1, 2コース目→entry2,…で処理
@@ -309,12 +307,13 @@ def process_attendance_and_write_sheet():
             xkey = f"exit{new_course_idx}"
             print(f"[DEBUG] => course_id={cid_int}, period={schedule_period} -> ekey={ekey}, xkey={xkey}")
 
-            # 前のperiodで exit が未記録の場合は、このperiodはスキップして None を設定
+            # 前のperiodで exit が未記録の場合は、このperiodはスキップして特定の値を設定
             if incomplete_previous:
-                print(f"[DEBUG] 以前のperiodで exit が未記録のため、course_id={cid_int} の判定は None に設定")
+                print(f"[DEBUG] 以前のperiodで exit が未記録のため、course_id={cid_int} の判定は空文字列に設定")
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
-                set_data_in_firebase(decision_path, None)
-                results_dict[(student_index, new_course_idx, date_str, cid_int)] = None
+                # Firebase は None を受け付けないので、ここでは空文字列 "" をセットする
+                set_data_in_firebase(decision_path, "")
+                results_dict[(student_index, new_course_idx, date_str, cid_int)] = ""
                 continue
 
             # entryが存在しなければ欠席扱い
@@ -343,7 +342,7 @@ def process_attendance_and_write_sheet():
             )
             print(f"[DEBUG] => 判定結果: {status}")
 
-            # 判定結果が「entryはあるがexitが無い」状態の場合、以降のperiodは None とする
+            # 判定結果が「entryはあるがexitが無い」状態の場合、以降のperiodは特定の値（ここでは空文字列）にする
             if entry_dt and (exit_dt is None):
                 incomplete_previous = True
 
