@@ -156,7 +156,6 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
             return f"△遅{delta_min}分"
         # 今回の要件：entry のみのときは「○」にしつつ新たに exit や次コマは作らない
         return "〇", entry_dt, None, None
-        break
 
     # 遅刻（exit はあるが entry が遅れている etc.）
     if (
