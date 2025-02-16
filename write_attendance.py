@@ -14,7 +14,7 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(
         cred,
         {
-            "databaseURL": "https://test-xxxxx-default-rtdb.firebaseio.com/",  # URLを自環境に合わせて
+            "databaseURL": "https://test-51ebc-default-rtdb.firebaseio.com/",  # URLを自環境に合わせて
         },
     )
 else:
