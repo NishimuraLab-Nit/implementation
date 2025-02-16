@@ -96,15 +96,11 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     # 【修正】entry はあるが exit が無い場合
     # ---------------------------
     if entry_dt and (exit_dt is None):
-            # 遅刻 + 次コマへまたがる
-        if (
-            entry_dt
-            and exit_dt
-            and entry_dt >= (start_dt + td_5min)
-        ):
+        # 遅刻判定（entry_dt と exit_dt が共に存在し、entry_dt が start_dt+5分 以降の場合）
+        if entry_dt >= (start_dt + td_5min):
             delta_min = int((entry_dt - start_dt).total_seconds() // 60)
             return f"△遅{delta_min}分"
-        # 今回の要件：entry のみのときは「○」にしつつ新たに exit や次コマは作らない
+        # 今回の要件：entry のみの場合は「〇」として、exit や次コマの処理を行わない
         return "〇", entry_dt, None, None
         
     # 入室が授業終了後 → 欠席
@@ -313,14 +309,15 @@ def process_attendance_and_write_sheet():
 
             print(f"[DEBUG] => course_id={cid_int}, period={schedule_period} -> ekey={ekey}, xkey={xkey}")
 
-            if ekey not in att_dict:
-                # entry が無ければ欠席扱い
-                print(f"[DEBUG] {ekey} が無いので欠席(×)")
-                status = "×"
-                decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
-                set_data_in_firebase(decision_path, status)
-                results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
-                continue
+            if entry_dt and (exit_dt is None):
+                if ekey not in att_dict:
+                    # entry が無ければ欠席扱い
+                    print(f"[DEBUG] {ekey} が無いので欠席(×)")
+                    status = "×"
+                    decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
+                    set_data_in_firebase(decision_path, status)
+                    results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
+                    continue
 
             entry_info = att_dict[ekey]
             exit_info = att_dict.get(xkey, {})
