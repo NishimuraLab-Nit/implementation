@@ -112,7 +112,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
     指定クラスのスプレッドシートを開き、現在の時刻に該当する period のコース列に出席情報を記載します。
     """
     print(f"\n[Debug] ========== Start processing class_index: {class_index} ==========")
-    # Classデータ取得
+    # Classデータ取得（パスを統一）
     class_data_path = f"Classes/class_index/{class_index}"
     class_data = get_data_from_firebase(class_data_path)
     if not class_data:
@@ -121,18 +121,18 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
 
     class_sheet_id = class_data.get("class_sheet_id")
     if not class_sheet_id:
-        print(f"[Debug] No class_sheet_id found under Class/class_index/{class_index}")
+        print(f"[Debug] No class_sheet_id found under {class_data_path}")
         return
 
     course_ids_str = class_data.get("course_id", "")
     if not course_ids_str:
-        print(f"[Debug] No course_id info under Class/class_index/{class_index}")
+        print(f"[Debug] No course_id info under {class_data_path}")
         return
     possible_course_ids = parse_course_ids(course_ids_str)
 
     student_indices_str = class_data.get("student_index", "")
     if not student_indices_str:
-        print(f"[Debug] No student_index info under Class/class_index/{class_index}")
+        print(f"[Debug] No student_index info under {class_data_path}")
         return
     student_indices = parse_student_indices(student_indices_str)
 
@@ -168,7 +168,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
 
     print(f"[Debug] Using worksheet: {sheet.title}")
 
-    # 学生ごとのattendanceをチェック
+    # 学生ごとの attendance をチェック
     for idx, student_idx in enumerate(student_indices, start=1):
         row_number = idx + 2
         print(f"[Debug]\nProcessing student_index: {student_idx} (row={row_number})")
@@ -235,10 +235,10 @@ def main():
     print(f"[Debug] Current sheet name: {current_sheet_name}")
     print(f"[Debug] Current day of month: {current_day_of_month}")
 
-    # Firebase の "Class/class_index" から全クラス情報を一括取得
-    all_classes_data = get_data_from_firebase("Class/class_index")
+    # Firebase の "Classes/class_index" から全クラス情報を一括取得（パスを統一）
+    all_classes_data = get_data_from_firebase("Classes/class_index")
     if not all_classes_data:
-        print("[Debug] No class data found at 'Class/class_index'.")
+        print("[Debug] No class data found at 'Classes/class_index'.")
         return
 
     # 取得したクラス一覧をループし、1クラスずつ処理
