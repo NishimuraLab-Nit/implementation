@@ -309,7 +309,7 @@ def process_attendance_and_write_sheet():
 
             print(f"[DEBUG] => course_id={cid_int}, period={schedule_period} -> ekey={ekey}, xkey={xkey}")
 
-            if entry_dt and (exit_dt is None):
+            if ekey and (xkey is None):
                 if ekey not in att_dict:
                     # entry が無ければ欠席扱い
                     print(f"[DEBUG] {ekey} が無いので欠席(×)")
