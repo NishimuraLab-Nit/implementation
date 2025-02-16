@@ -189,7 +189,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid}/decision"
                 decision = get_data_from_firebase(decision_path)
                 if decision is None:
-                    decision = "×"
+                    decision = ""
                 status = decision
                 print(f"[Debug] For course_id {cid} (period {course_period}): decision='{status}'")
 
