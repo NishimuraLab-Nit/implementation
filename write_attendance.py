@@ -4,7 +4,6 @@ from firebase_admin import credentials, db
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
-
 # ---------------------
 # Firebase & GSpread初期化
 # ---------------------
@@ -88,6 +87,7 @@ PERIOD_TIME_MAP = {
 def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     """
     1コマ分の出席判定を行い、ステータスと修正後の入退室時刻、次コマ用データを返す。
+    ※常に4要素（status, new_entry_dt, new_exit_dt, next_period_data）を返す
     """
     td_5min = datetime.timedelta(minutes=5)
     td_10min = datetime.timedelta(minutes=10)
@@ -98,9 +98,9 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     if entry_dt and (exit_dt is None):
         if entry_dt >= (start_dt + td_5min):
             delta_min = int((entry_dt - start_dt).total_seconds() // 60)
-            return f"△遅{delta_min}分", entry_dt, None, None  # 4タプルにする
+            return f"△遅{delta_min}分", entry_dt, None, None
         return "〇", entry_dt, None, None
-        
+
     # 入室が授業終了後 → 欠席
     if entry_dt and entry_dt >= finish_dt:
         return "×", entry_dt, exit_dt, None
@@ -194,7 +194,7 @@ def ensure_slot_is_free(att_dict, updates, slot_idx):
 
     # 現在のスロットにあるデータを next_slot に移動
     if ekey in att_dict:
-        updates[ekey_next] = att_dict[ekey]  # updates にも記録
+        updates[ekey_next] = att_dict[ekey]
         att_dict[ekey_next] = att_dict[ekey]
         del att_dict[ekey]
     if xkey in att_dict:
@@ -207,12 +207,100 @@ def ensure_slot_is_free(att_dict, updates, slot_idx):
 
 
 def process_attendance_and_write_sheet():
-    # （中略）
-    for student_id, att_dict in attendance_data.items():
-        # 学生ごとの前処理など
-        # …
-        incomplete_previous = False  # 前のperiodでexitが無かった場合のフラグ
+    now = datetime.datetime.now()
+    current_weekday_str = now.strftime("%A")
+    print(f"[DEBUG] 現在の曜日: {current_weekday_str}")
 
+    print("[DEBUG] attendance_data を取得します。")
+    attendance_data = get_data_from_firebase("Students/attendance/student_id")
+    if not attendance_data:
+        print("attendance データがありません。終了します。")
+        return
+
+    print("[DEBUG] Courses/course_id を取得します。")
+    courses_all = get_data_from_firebase("Courses/course_id")
+
+    print("[DEBUG] Students/student_info を取得します。")
+    student_info_data = get_data_from_firebase("Students/student_info")
+
+    print("[DEBUG] Students/enrollment/student_index を取得します。")
+    enrollment_data_all = get_data_from_firebase("Students/enrollment/student_index")
+
+    if not courses_all or not student_info_data or not enrollment_data_all:
+        print("[DEBUG] 必要なデータが不足しています。終了します。")
+        return
+
+    results_dict = {}
+
+    print("[DEBUG] === 学生ごとのループを開始します。 ===")
+    for student_id, att_dict in attendance_data.items():
+        if not isinstance(att_dict, dict):
+            continue
+
+        # student_index を取得
+        si_map = student_info_data.get("student_id", {})
+        if student_id not in si_map:
+            continue
+
+        student_index = si_map[student_id].get("student_index")
+        if not student_index:
+            continue
+
+        # enrollment (course_id一覧)
+        enroll_info = enrollment_data_all.get(student_index)
+        if not enroll_info or "course_id" not in enroll_info:
+            continue
+
+        enrolled_course_str = enroll_info["course_id"]
+        enrolled_course_ids = [c.strip() for c in enrolled_course_str.split(",") if c.strip()]
+        print(f"[DEBUG] student_index={student_index} が履修しているコース: {enrolled_course_ids}")
+
+        # 今日の曜日と合致するコースを抽出し、(period, course_id) でソート
+        valid_course_list = []
+        for cid_str in enrolled_course_ids:
+            try:
+                cid_int = int(cid_str)
+            except ValueError:
+                continue
+            if cid_int < 0 or cid_int >= len(courses_all):
+                continue
+
+            course_info = courses_all[cid_int]
+            if not course_info:
+                continue
+
+            sched = course_info.get("schedule", {})
+            day_in_course = sched.get("day", "")
+            period_in_course = sched.get("period", 0)
+            # 今日の曜日と合致するコースのみ
+            if day_in_course == current_weekday_str:
+                valid_course_list.append((period_in_course, cid_int))
+
+        # periodが小さい順、同じなら course_id が小さい順にソート
+        valid_course_list.sort(key=lambda x: (x[0], x[1]))
+        print(f"[DEBUG] => 当日対象のコース一覧(sorted): {valid_course_list}")
+
+        # 基準日 (最初に見つかった entry1～entry4 の read_datetime の日付)
+        base_date = None
+        for i in range(1, 5):
+            ekey_test = f"entry{i}"
+            if ekey_test in att_dict:
+                dt_tmp = parse_datetime(att_dict[ekey_test].get("read_datetime", ""))
+                if dt_tmp:
+                    base_date = dt_tmp.date()
+                    break
+
+        if not base_date:
+            print(f"[DEBUG] student_id={student_id} に entry1～entry4 の日時が無くスキップ")
+            continue
+
+        date_str = base_date.strftime("%Y-%m-%d")
+        print(f"[DEBUG] => student_id={student_id} / 基準日: {date_str}")
+
+        # 前のperiodで entry はあるが exit が無い場合、以降のperiodは判定せず None とするフラグ
+        incomplete_previous = False
+
+        # valid_course_list の順に、1コース目→entry1, 2コース目→entry2,…で処理
         for new_course_idx, (schedule_period, cid_int) in enumerate(valid_course_list, start=1):
             if not (1 <= schedule_period <= 4):
                 continue
@@ -221,15 +309,15 @@ def process_attendance_and_write_sheet():
             xkey = f"exit{new_course_idx}"
             print(f"[DEBUG] => course_id={cid_int}, period={schedule_period} -> ekey={ekey}, xkey={xkey}")
 
-            # 前のperiodで exit が無かった場合は、このperiodの判定は None にする
+            # 前のperiodで exit が未記録の場合は、このperiodはスキップして None を設定
             if incomplete_previous:
-                print(f"[DEBUG] 以前のperiodでexitが未記録のため、course_id={cid_int} の判定はNoneに設定")
+                print(f"[DEBUG] 以前のperiodで exit が未記録のため、course_id={cid_int} の判定は None に設定")
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
                 set_data_in_firebase(decision_path, None)
                 results_dict[(student_index, new_course_idx, date_str, cid_int)] = None
                 continue
 
-            # entryが存在しない場合は欠席扱い
+            # entryが存在しなければ欠席扱い
             if ekey not in att_dict:
                 print(f"[DEBUG] {ekey} が無いので欠席(×)")
                 status = "×"
@@ -255,18 +343,21 @@ def process_attendance_and_write_sheet():
             )
             print(f"[DEBUG] => 判定結果: {status}")
 
-            # 判定結果が「entryはあるがexitが無い」状態の場合、以降のperiodは None にする
+            # 判定結果が「entryはあるがexitが無い」状態の場合、以降のperiodは None とする
             if entry_dt and (exit_dt is None):
                 incomplete_previous = True
 
-            # （以降、Firebaseへの更新処理など）
             updates = {}
+
+            # 入室時刻の補正
             if new_entry_dt and (new_entry_dt != entry_dt):
                 updates[ekey] = {
                     "read_datetime": new_entry_dt.strftime("%Y-%m-%d %H:%M:%S"),
                     "serial_number": entry_info.get("serial_number", ""),
                 }
                 att_dict[ekey] = updates[ekey]
+
+            # 退出時刻の補正
             if new_exit_dt and (new_exit_dt != exit_dt):
                 updates[xkey] = {
                     "read_datetime": new_exit_dt.strftime("%Y-%m-%d %H:%M:%S"),
@@ -280,6 +371,7 @@ def process_attendance_and_write_sheet():
                 }
                 att_dict[xkey] = updates[xkey]
 
+            # 次コマへまたがる場合
             if next_period_data and new_course_idx < 4:
                 slot_for_next = ensure_slot_is_free(att_dict, updates, new_course_idx + 1)
                 next_ekey = f"entry{slot_for_next}"
@@ -299,6 +391,7 @@ def process_attendance_and_write_sheet():
                     }
                     att_dict[next_xkey] = updates[next_xkey]
 
+            # Firebase への更新
             if updates:
                 att_path = f"Students/attendance/student_id/{student_id}"
                 update_data_in_firebase(att_path, updates)
@@ -306,7 +399,6 @@ def process_attendance_and_write_sheet():
             decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
             set_data_in_firebase(decision_path, status)
             results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
-
 
     print("[DEBUG] === シート書き込み処理を開始します。 ===")
     all_student_index_data = student_info_data.get("student_index", {})
@@ -352,7 +444,7 @@ def process_attendance_and_write_sheet():
             except ValueError:
                 continue
 
-            # (行, 列)は例としてコース順+2, 日付+1
+            # 例として、行: コース順+2, 列: 日付+1 に更新
             row = course_pos + 2
             col = day + 1
             ws.update_cell(row, col, status_val)
