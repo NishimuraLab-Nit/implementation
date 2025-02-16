@@ -43,8 +43,8 @@ def get_current_date_details():
     """
     now = datetime.datetime.now()
     current_day = now.strftime("%A")           # 例: "Sunday"
-    current_sheet_name = now.strftime("%Y-%m") # 例: "2025-01"
-    current_day_of_month = now.day            # 例: 26
+    current_sheet_name = now.strftime("%Y-%m")  # 例: "2025-01"
+    current_day_of_month = now.day               # 例: 26
     return current_day, current_sheet_name, current_day_of_month
 
 
@@ -78,8 +78,7 @@ def main():
     matched_courses = []
     for idx, course_info in enumerate(courses_data):
         course_id = idx
-        if course_id == 0:
-            continue
+        # ここで course_id == 0 の場合も処理対象に含めるため、continueは削除します。
         if not course_info:
             print(f"[Debug] Course data at index {course_id} is None.")
             continue
