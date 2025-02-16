@@ -10,11 +10,11 @@ from oauth2client.service_account import ServiceAccountCredentials
 # ---------------------
 if not firebase_admin._apps:
     print("[DEBUG] Firebase未初期化。credentials.Certificateを使用して初期化します...")
-    cred = credentials.Certificate("/tmp/firebase_service_account.json")  # <-- 自環境用パスに置き換えてください
+    cred = credentials.Certificate("/tmp/firebase_service_account.json")  # パスを自環境に合わせて
     firebase_admin.initialize_app(
         cred,
         {
-            "databaseURL": "https://test-51ebc-default-rtdb.firebaseio.com/",  # <-- 自環境用のURLに置き換えてください
+            "databaseURL": "https://test-xxxxx-default-rtdb.firebaseio.com/",  # URLを自環境に合わせて
         },
     )
 else:
@@ -25,7 +25,7 @@ scope = [
     "https://www.googleapis.com/auth/drive",
 ]
 print("[DEBUG] Google認証の設定を行います...")
-creds = ServiceAccountCredentials.from_json_keyfile_name("/tmp/gcp_service_account.json", scope)  # <-- 自環境用パスに置き換えてください
+creds = ServiceAccountCredentials.from_json_keyfile_name("/tmp/gcp_service_account.json", scope)  # パスを自環境に合わせて
 gclient = gspread.authorize(creds)
 print("[DEBUG] Google認証が完了しました。")
 
@@ -135,8 +135,7 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
     ):
         return "〇", entry_dt, exit_dt, None
 
-    # (○)のパターン2: 授業終了後も退室していない or 次コマにまたがる
-    #   → 次コマへ時間を引き継ぐデータ(next_period_data)を作成
+    # (○)のパターン2: 授業終了後も退出していない or 次コマにまたがる
     if (
         entry_dt
         and exit_dt
@@ -144,8 +143,8 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
         and exit_dt >= (finish_dt + td_5min)
     ):
         original_exit = exit_dt
-        updated_exit_dt = finish_dt  # このコマはfinish_dtで終わらせる
-        next_entry_dt = finish_dt + td_10min  # 次コマは終了の10分後に入室したものとする
+        updated_exit_dt = finish_dt
+        next_entry_dt = finish_dt + td_10min
         next_exit_dt = original_exit
         return "〇", entry_dt, updated_exit_dt, (next_entry_dt, next_exit_dt)
 
@@ -180,51 +179,53 @@ def judge_attendance_for_period(entry_dt, exit_dt, start_dt, finish_dt):
         delta_min = int((entry_dt - start_dt).total_seconds() // 60)
         return f"△遅{delta_min}分", entry_dt, exit_dt, None
 
-    # いずれにも該当しないケース
+    # いずれにも該当しない → ？
     return "？", entry_dt, exit_dt, None
 
 
-def ensure_slot_is_free(att_dict, slot_idx):
+def ensure_slot_is_free(att_dict, updates, slot_idx):
     """
-    slot_idx番のentry/exitが既に使われている場合、
-    そのデータを空いている後ろのスロットへずらしていき、最終的に確保したスロット番号を返す。
+    slot_idx 番 (entry{slot_idx}/exit{slot_idx}) が既に使われている場合、
+    後ろのスロット(最大4)へ順次ずらして空きを作る。
 
-    - 1日最大4スロット想定
-    - 例: ensure_slot_is_free(att_dict, 2) を呼び出すとき
-        ・entry2/exit2 にデータがあれば、entry3/exit3 が空いているかどうか確認し、
-          埋まっていればentry4へ…と順番にずらしていく。
-        ・結果的に2番スロットが空けば `2` を返す。
-        ・もし4番まで埋まっていたら、4番を上書きして `4` を返す。
+    - ずらし作業も含め、Firebaseに反映できるように 'updates' にも書き込みを追加する。
+    - 1日最大4スロット想定。
+    - 例: ensure_slot_is_free(att_dict, updates, 2) を呼び出すと、
+        entry2/exit2 が埋まっていれば entry3/exit3 へ移し、
+        さらにentry3/exit3が埋まっていればentry4/exit4へ... と順にずらす。
+    - 最終的に空いたスロット番号を返す。
     """
-    for i in range(slot_idx, 5):  # 1～4 の範囲をチェック (range(5)だと 0..4 なので slot_idx～4)
-        ekey = f"entry{i}"
-        xkey = f"exit{i}"
+    if slot_idx > 4:
+        return 4
 
-        # スロットが空いていれば、そこを使う
-        if (ekey not in att_dict) and (xkey not in att_dict):
-            return i
+    ekey = f"entry{slot_idx}"
+    xkey = f"exit{slot_idx}"
 
-        # スロットが埋まっていて、かつ i=4(最終スロット)なら、やむを得ず上書き
-        if i == 4:
-            return 4
+    # スロットが空いていれば、このスロットを返して終了
+    if (ekey not in att_dict) and (xkey not in att_dict):
+        return slot_idx
 
-        # ここに来たということは i<4 かつ埋まっている → i+1 のスロットをさらに確保する必要がある
-        slot_for_next = ensure_slot_is_free(att_dict, i + 1)
-        # slot_for_next が確保できたら、i番目のデータをそこへ移す
-        ekey_shift = f"entry{slot_for_next}"
-        xkey_shift = f"exit{slot_for_next}"
+    # もし slot_idx=4 (最後) まで埋まっていれば、やむを得ず上書きするしかないので4を返す
+    if slot_idx == 4:
+        return 4
 
-        if ekey in att_dict:
-            att_dict[ekey_shift] = att_dict[ekey]
-            del att_dict[ekey]
-        if xkey in att_dict:
-            att_dict[xkey_shift] = att_dict[xkey]
-            del att_dict[xkey]
+    # ここに来たのは「このスロットが埋まっていて、まだ後ろに空きの可能性がある」場合
+    # → slot_idx+1 を空ける
+    next_slot = ensure_slot_is_free(att_dict, updates, slot_idx + 1)
+    ekey_next = f"entry{next_slot}"
+    xkey_next = f"exit{next_slot}"
 
-        # i番スロットが空いたので、ここを返して終了
-        return i
+    # slot_idx のデータを next_slot に移動
+    if ekey in att_dict:
+        updates[ekey_next] = att_dict[ekey]  # updates にも記録
+        att_dict[ekey_next] = att_dict[ekey]
+        del att_dict[ekey]
+    if xkey in att_dict:
+        updates[xkey_next] = att_dict[xkey]
+        att_dict[xkey_next] = att_dict[xkey]
+        del att_dict[xkey]
 
-    # 万一ここに来ることはない想定
+    # slot_idx を空けることに成功したので、slot_idx を返す
     return slot_idx
 
 
@@ -356,7 +357,9 @@ def process_attendance_and_write_sheet():
             )
             print(f"[DEBUG] => 判定結果: {status}")
 
+            # 今回コースに対する Firebase の更新内容を貯める
             updates = {}
+
             # 入室時刻の補正
             if new_entry_dt and (new_entry_dt != entry_dt):
                 updates[ekey] = {
@@ -373,6 +376,7 @@ def process_attendance_and_write_sheet():
                 }
                 att_dict[xkey] = updates[xkey]
             elif new_exit_dt and not exit_dt:
+                # exit_dt が無い(居残り)→新しく書き込み
                 updates[xkey] = {
                     "read_datetime": new_exit_dt.strftime("%Y-%m-%d %H:%M:%S"),
                     "serial_number": exit_info.get("serial_number", ""),
@@ -383,18 +387,19 @@ def process_attendance_and_write_sheet():
             if next_period_data and new_course_idx < 4:
                 next_e, next_x = next_period_data
 
-                # 本来なら entry{new_course_idx+1} に書くが、もしそこが埋まっていればさらに先へずらす
-                target_slot = ensure_slot_is_free(att_dict, new_course_idx + 1)
-                next_ekey = f"entry{target_slot}"
-                next_xkey = f"exit{target_slot}"
-                print(f"[DEBUG] -> 次コマデータを slot={target_slot} に書き込み (entry={next_e}, exit={next_x})")
+                # 本来 entry{new_course_idx+1} に書くが、そこが埋まってればさらに先へずらす
+                slot_for_next = ensure_slot_is_free(att_dict, updates, new_course_idx + 1)
+                next_ekey = f"entry{slot_for_next}"
+                next_xkey = f"exit{slot_for_next}"
+                print(f"[DEBUG] -> 次コマデータを slot={slot_for_next} に書き込み (entry={next_e}, exit={next_x})")
 
                 if next_e:
                     updates[next_ekey] = {
                         "read_datetime": next_e.strftime("%Y-%m-%d %H:%M:%S"),
-                        "serial_number": entry_info.get("serial_number", ""),  # 同カードとして扱う例
+                        "serial_number": entry_info.get("serial_number", ""),
                     }
                     att_dict[next_ekey] = updates[next_ekey]
+
                 if next_x:
                     updates[next_xkey] = {
                         "read_datetime": next_x.strftime("%Y-%m-%d %H:%M:%S"),
@@ -402,12 +407,12 @@ def process_attendance_and_write_sheet():
                     }
                     att_dict[next_xkey] = updates[next_xkey]
 
-            # Firebaseへ反映
+            # 「ずらし」や「次コマ追加入力」で updates が溜まった場合 → Firebase に反映
             if updates:
                 att_path = f"Students/attendance/student_id/{student_id}"
                 update_data_in_firebase(att_path, updates)
 
-            # コースごとの最終判定ステータス
+            # コースごとの最終判定ステータスを Firebase に保存
             decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid_int}/decision"
             set_data_in_firebase(decision_path, status)
             results_dict[(student_index, new_course_idx, date_str, cid_int)] = status
@@ -466,7 +471,7 @@ def process_attendance_and_write_sheet():
                 print(f"[DEBUG] cid_str={cid_str} が enrolled_course_ids に見つからずスキップします。")
                 continue
 
-            # シート上の行列決め(例: 行=コース順+2, 列=日+1)
+            # シート上の行列決め(例: 行=コース順+2, 列=日付+1)
             row = course_pos + 2
             col = day + 1
 
