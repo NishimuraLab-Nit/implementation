@@ -176,7 +176,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
         if exit_key not in attendance_data:
             # entryのみの場合：現在の period のセルのみ更新する
             col_number = map_date_period_to_column(current_day_of_month, current_period)
-            status = "○"
+            status = "〇"
             try:
                 sheet.update_cell(row_number, col_number, status)
                 print(f"[Debug] (Entry only) Updated cell (row={row_number}, col={col_number}) with '{status}'.")
@@ -199,7 +199,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid}/decision"
                 decision = get_data_from_firebase(decision_path)
                 if decision is None:
-                    decision = "×"
+                    decision = ""
                 status = decision
 
                 try:
