@@ -50,7 +50,7 @@ def get_current_date_details():
 
 def map_date_period_to_column(day_of_month, period):
     """
-    列番号を日付とコマ数から計算して返します。
+    日付と period からセルの列番号を計算して返します。
     例: 列番号 = (日付 * 4) + period - 2
     """
     return (day_of_month * 4) + period - 2
@@ -73,7 +73,7 @@ def parse_course_ids(course_ids_str):
 
 def get_period_from_now(now):
     """
-    現在時刻がどのperiodに該当するかを判定して返します。該当しない場合は None。
+    現在時刻がどの period に該当するかを判定して返します。該当しない場合は None。
     """
     def hm_to_dt(hh, mm):
         return now.replace(hour=hh, minute=mm, second=0, microsecond=0)
@@ -94,7 +94,7 @@ def get_period_from_now(now):
 def process_single_class(class_index, now, current_day, current_sheet_name, current_day_of_month):
     """
     1つのクラスを処理する。  
-    指定クラスのスプレッドシートを開き、現在の時刻に該当する period のコース列に出席情報を記載します。
+    指定クラスのスプレッドシートを開き、各コースの period に対応するセルへ出席情報を記載します。
     """
     print(f"\n[Debug] ========== Start processing class_index: {class_index} ==========")
     # Classデータ取得（パスを統一）
@@ -125,14 +125,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
     print(f"[Debug] Possible course_ids: {possible_course_ids}")
     print(f"[Debug] Student indices: {student_indices}")
 
-    # period判定
-    period = get_period_from_now(now)
-    if period is None:
-        print("[Debug] 現在の時刻はどの授業時間にも該当しません。処理をスキップします。")
-        return
-    print(f"[Debug] Current time corresponds to period: {period}")
-
-    # Googleシートを開き、ワークシートを取得
+    # ※シートは全体の出席時刻にかかわらず、各コースの period に対応するセルへ更新します。
     try:
         sh = gclient.open_by_key(class_sheet_id)
         print(f"[Debug] Opened Google Sheet: {sh.title}")
@@ -150,7 +143,7 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
     # 学生ごとの attendance をチェック
     for idx, student_idx in enumerate(student_indices, start=1):
         row_number = idx + 2
-        print(f"[Debug]\nProcessing student_index: {student_idx} (row={row_number})")
+        print(f"\n[Debug] Processing student_index: {student_idx} (row={row_number})")
 
         student_id_path = f"Students/student_info/student_index/{student_idx}/student_id"
         student_id = get_data_from_firebase(student_id_path)
@@ -168,53 +161,60 @@ def process_single_class(class_index, now, current_day, current_sheet_name, curr
         entry_key = "entry1"
         exit_key = "exit1"
 
-        # entryがない場合はスキップ
         if entry_key not in attendance_data:
             print(f"[Debug] No {entry_key} found ⇒ skip.")
             continue
 
-        # entryのみの場合は「○」とする
-        if exit_key not in attendance_data:
-            status = "○"
-            print(f"[Debug] entry1 found but exit1 not found ⇒ status='{status}'")
-        else:
-            # entry, exit両方がある場合、全てのcourse_idのdecisionを取得する
-            decisions = []
-            for cid in possible_course_ids:
+        # 各コース毎に処理を行う
+        for cid in possible_course_ids:
+            # まず、各コースの period を取得
+            course_info = get_data_from_firebase(f"Courses/course_id/{cid}")
+            if not course_info:
+                print(f"[Debug] No course info found for course_id {cid}. Skipping this course.")
+                continue
+            course_schedule = course_info.get("schedule", {})
+            course_period = course_schedule.get("period")
+            if not course_period:
+                print(f"[Debug] No period info for course_id {cid}. Skipping this course.")
+                continue
+
+            column_number = map_date_period_to_column(current_day_of_month, course_period)
+
+            if exit_key not in attendance_data:
+                # entry のみの場合は「○」
+                status = "○"
+                print(f"[Debug] For course_id {cid} (period {course_period}): entry only ⇒ status='{status}'")
+            else:
+                # entry, exit 両方がある場合、各 course の decision を取得
                 decision_path = f"Students/attendance/student_id/{student_id}/course_id/{cid}/decision"
                 decision = get_data_from_firebase(decision_path)
                 if decision is None:
                     decision = "×"
-                decisions.append(str(decision))
-            status = ", ".join(decisions)
-            print(f"[Debug] entry1 and exit1 found ⇒ decisions='{status}'")
+                status = decision
+                print(f"[Debug] For course_id {cid} (period {course_period}): decision='{status}'")
 
-        column_number = map_date_period_to_column(current_day_of_month, period)
-        try:
-            sheet.update_cell(row_number, column_number, status)
-            print(f"[Debug] Updated cell(row={row_number}, col={column_number}) with '{status}'.")
-        except Exception as e:
-            print(f"[Debug] Error updating sheet: {e}")
+            try:
+                sheet.update_cell(row_number, column_number, status)
+                print(f"[Debug] Updated cell (row={row_number}, col={column_number}) with '{status}'.")
+            except Exception as e:
+                print(f"[Debug] Error updating sheet for course_id {cid}: {e}")
 
 
 def main():
     """
     全クラスをループし、共通処理をまとめて実行する。
     """
-    # 日付や現在時刻に関する情報を先に取得
     now, current_day, current_sheet_name, current_day_of_month = get_current_date_details()
     print(f"[Debug] Now (JST): {now}")
     print(f"[Debug] Current day: {current_day}")
     print(f"[Debug] Current sheet name: {current_sheet_name}")
     print(f"[Debug] Current day of month: {current_day_of_month}")
 
-    # Firebase の "Classes/class_index" から全クラス情報を一括取得（パスを統一）
     all_classes_data = get_data_from_firebase("Classes/class_index")
     if not all_classes_data:
         print("[Debug] No class data found at 'Classes/class_index'.")
         return
 
-    # 取得したクラス一覧をループし、1クラスずつ処理
     for class_index in all_classes_data.keys():
         process_single_class(
             class_index,
