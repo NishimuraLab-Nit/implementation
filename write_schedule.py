@@ -39,6 +39,18 @@ def get_firebase_data(ref_path):
         print(f"[Debug] No data found at path: {ref_path}")
     return data
 
+def execute_with_retry(request):
+    # リトライ機能を実装し、スリープを追加
+    retries = 3
+    for i in range(retries):
+        try:
+            return request.execute()
+        except HttpError as e:
+            if e.resp.status == 429:  # 429はレート制限を意味します
+                print("[デバッグ] レート制限を超えました。再試行します...")
+                time.sleep(60)  # 60秒待機して再試行
+            else:
+                raise e
 
 def create_cell_update_request(sheet_id, row_index, column_index, value):
     """
