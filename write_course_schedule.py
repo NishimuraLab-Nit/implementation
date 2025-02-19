@@ -33,7 +33,21 @@ def get_google_sheets_service():
     service = build("sheets", "v4", cache_discovery=False, http=authorized_http)
     print("[Debug] Google Sheets API service initialized.")
     return service
-    
+
+
+def execute_with_retry(request):
+    # リトライ機能を実装し、スリープを追加
+    retries = 3
+    for i in range(retries):
+        try:
+            return request.execute()
+        except HttpError as e:
+            if e.resp.status == 429:  # 429はレート制限を意味します
+                print("[デバッグ] レート制限を超えました。再試行します...")
+                time.sleep(60)  # 60秒待機して再試行
+            else:
+                raise e
+
 def execute_with_retry(request):
     # リトライ機能を実装し、スリープを追加
     retries = 3
